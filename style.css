@@ -1,0 +1,411 @@
+/* Стиль iOS: сгруппированные списки, системные цвета, большой заголовок.
+   Шрифт SF Pro подставится сам на устройствах Apple; на других системах
+   будет системный шрифт (Roboto, Segoe UI и т.п.). */
+
+:root {
+  --bg: #f2f2f7;          /* systemGroupedBackground */
+  --cell: #ffffff;        /* фон строк */
+  --label: #000000;
+  --secondary: #6c6c70;   /* вторичный текст */
+  --placeholder: #c3c3c7;
+  --sep: #c6c6c8;         /* тонкие разделители */
+  --tint: #007aff;        /* системный синий */
+  --on-tint: #ffffff;
+  --plus: #248a3d;        /* зелёный, читаемый на белом */
+  --red: #d70015;
+  --fill: rgba(118, 118, 128, 0.12); /* фон сегментного переключателя */
+  --thumb: #ffffff;
+  --bar: rgba(242, 242, 247, 0.85);
+  --toast: rgba(60, 60, 67, 0.92);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #000000;
+    --cell: #1c1c1e;
+    --label: #ffffff;
+    --secondary: #98989f;
+    --placeholder: #5a5a5e;
+    --sep: #38383a;
+    --tint: #0a84ff;
+    --plus: #30d158;
+    --red: #ff453a;
+    --fill: rgba(118, 118, 128, 0.24);
+    --thumb: #636366;
+    --bar: rgba(0, 0, 0, 0.8);
+  }
+}
+
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+[hidden] { display: none !important; }
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", system-ui, sans-serif;
+  font-size: 17px;
+  line-height: 1.3;
+  background: var(--bg);
+  color: var(--label);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ---------- Большой заголовок ---------- */
+.large-title {
+  max-width: 520px;
+  margin: 0 auto;
+  padding: calc(env(safe-area-inset-top, 0px) + 16px) max(16px, env(safe-area-inset-right)) 4px max(16px, env(safe-area-inset-left));
+}
+h1 { margin: 0; font-size: 34px; line-height: 1.15; font-weight: 700; letter-spacing: 0.3px; }
+
+/* ---------- Сегментный переключатель ---------- */
+.tabbar {
+  position: sticky;
+  top: env(safe-area-inset-top, 0px);
+  z-index: 2;
+  padding: 8px max(16px, env(safe-area-inset-right)) 8px max(16px, env(safe-area-inset-left));
+  background: var(--bar);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  backdrop-filter: saturate(180%) blur(20px);
+}
+.tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  max-width: 520px;
+  margin: 0 auto;
+  padding: 2px;
+  border-radius: 9px;
+  background: var(--fill);
+}
+.tab {
+  font: inherit;
+  font-size: 15px;
+  font-weight: 500;
+  height: 36px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--label);
+  cursor: pointer;
+}
+.tab[aria-selected="true"] {
+  font-weight: 600;
+  background: var(--thumb);
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.12), 0 3px 1px rgba(0, 0, 0, 0.04);
+}
+.tab:focus-visible, .primary:focus-visible { outline: 2px solid var(--tint); outline-offset: 2px; }
+
+main {
+  max-width: 520px;
+  margin: 0 auto;
+  padding: 12px max(16px, env(safe-area-inset-right)) calc(48px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left));
+}
+
+/* ---------- Сгруппированный список ---------- */
+.group {
+  margin: 0 0 20px;
+  padding: 0;
+  list-style: none;
+  background: var(--cell);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.row {
+  display: flex;
+  flex-wrap: wrap;           /* подсказка и ошибка переносятся на новую строку внутри ячейки */
+  align-items: center;
+  column-gap: 8px;
+  min-height: 48px;
+  padding: 0 16px;
+}
+/* Разделитель между строками: тонкая линия с отступом слева, как в iOS */
+.row + .row {
+  background-image: linear-gradient(var(--sep), var(--sep));
+  background-size: calc(100% - 16px) 0.5px;
+  background-position: right top;
+  background-repeat: no-repeat;
+}
+.row label, .row-label { flex: 0 0 auto; white-space: nowrap; }
+.row:focus-within label { color: var(--tint); }
+.row:has([aria-invalid="true"]) label { color: var(--red); }
+
+.row input, .row select {
+  flex: 1 1 0;
+  min-width: 0;
+  height: 48px;
+  padding: 0;
+  font: inherit;
+  color: var(--label);
+  text-align: right;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  -webkit-appearance: none;
+  appearance: none;
+  caret-color: var(--tint);
+}
+.row input:focus, .row select:focus { outline: none; }
+.row input::placeholder { color: var(--placeholder); }
+
+/* Дата: оставляем родной переключатель iOS, не растягиваем */
+.row input[type="date"] { flex: 0 0 auto; width: auto; margin-left: auto; }
+
+/* Категория: значение синим и шеврон, как в меню iOS */
+.row select {
+  color: var(--tint);
+  text-align-last: right;
+  padding-right: 18px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='16' viewBox='0 0 10 16' fill='none' stroke='%238e8e93' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2 6l3-3 3 3M2 10l3 3 3-3'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right center;
+}
+
+.hint, .error {
+  flex: 0 0 100%;
+  margin: 0;
+  padding: 0 0 10px;
+  font-size: 13px;
+  line-height: 1.3;
+}
+.hint { color: var(--secondary); }
+.error { color: var(--red); }
+.hint:empty, .error:empty { display: none; }
+
+/* Метка прироста пробега: "+500 км" */
+.delta {
+  flex: 0 0 auto;
+  padding: 2px 8px;
+  font-size: 15px;
+  font-weight: 600;
+  border-radius: 999px;
+  background: color-mix(in srgb, currentColor 14%, transparent);
+}
+.delta[data-sign="plus"]  { color: var(--plus); }
+.delta[data-sign="minus"] { color: var(--red); }
+.delta[data-sign="zero"]  { color: var(--secondary); }
+
+/* ---------- Кнопка ---------- */
+button.primary {
+  width: 100%;
+  height: 50px;
+  margin-top: 4px;
+  font: inherit;
+  font-weight: 600;
+  border: 0;
+  border-radius: 14px;
+  background: var(--tint);
+  color: var(--on-tint);
+  cursor: pointer;
+}
+button.primary:active { opacity: 0.6; }
+button.primary:disabled { opacity: 0.4; cursor: default; }
+
+/* ---------- Последние записи ---------- */
+h2 { margin: 28px 0 8px; padding-left: 4px; font-size: 20px; font-weight: 700; }
+.records li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 16px;
+}
+.records li + li {
+  background-image: linear-gradient(var(--sep), var(--sep));
+  background-size: calc(100% - 16px) 0.5px;
+  background-position: right top;
+  background-repeat: no-repeat;
+}
+.records .right { text-align: right; white-space: nowrap; }
+.records .title { font-size: 17px; }
+.records .sub { font-size: 15px; color: var(--secondary); }
+.records li.empty { display: block; padding: 16px; color: var(--secondary); text-align: center; }
+
+/* ---------- Статистика ---------- */
+.row-value { margin-left: auto; font-weight: 600; }
+.footer { margin: -12px 0 0; padding: 0 16px; font-size: 13px; color: var(--secondary); }
+
+/* ---------- Уведомления ---------- */
+.banner {
+  margin: 0 0 16px;
+  padding: 12px 16px;
+  border-radius: 10px;
+  background: var(--cell);
+  color: var(--red);
+}
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+  transform: translate(-50%, 16px);
+  padding: 12px 20px;
+  border-radius: 999px;
+  background: var(--toast);
+  color: #fff;
+  font-size: 15px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s, transform 0.2s;
+  -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: blur(20px);
+}
+.toast.show { opacity: 1; transform: translate(-50%, 0); }
+@media (prefers-reduced-motion: reduce) { .toast { transition: none; } }
+
+/* Выбор валюты рядом с суммой: узкий, по ширине самого длинного кода */
+.row select#currency { flex: 0 0 auto; padding-left: 10px; }
+
+/* ---------- Общий пробег под заголовком ---------- */
+.subtitle { margin: 2px 0 0; font-size: 17px; color: var(--secondary); }
+
+/* ---------- Редактирование записи ---------- */
+.edit-banner { margin: 0 4px 8px; font-size: 15px; font-weight: 600; color: var(--tint); }
+
+button.secondary {
+  display: block;
+  width: 100%;
+  height: 50px;
+  margin-top: 10px;
+  font: inherit;
+  font-weight: 600;
+  border: 0;
+  border-radius: 14px;
+  background: var(--cell);
+  color: var(--tint);
+  cursor: pointer;
+}
+button.secondary:active { opacity: 0.6; }
+button.secondary:focus-visible { outline: 2px solid var(--tint); outline-offset: 2px; }
+button.destructive { color: var(--red); }
+
+/* Строки списка нажимаются: тап открывает запись на редактирование */
+.records li[role="button"] { cursor: pointer; }
+.records li[role="button"]:active { background-color: color-mix(in srgb, var(--label) 8%, transparent); }
+.records li[aria-current="true"] { background-color: color-mix(in srgb, var(--tint) 12%, transparent); }
+.records li:focus-visible { outline: 2px solid var(--tint); outline-offset: -2px; }
+
+/* ---------- Заголовок с шестерёнкой ---------- */
+.title-row { display: flex; align-items: center; justify-content: space-between; }
+.icon-button {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  margin-right: -10px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--tint);
+  cursor: pointer;
+}
+.icon-button:active { opacity: 0.5; }
+.icon-button:focus-visible { outline: 2px solid var(--tint); outline-offset: 0; }
+.subtitle:empty { display: none; }
+
+/* ---------- Экран настроек ---------- */
+.navbar {
+  position: sticky;
+  top: env(safe-area-inset-top, 0px);
+  z-index: 2;
+  padding: 8px max(16px, env(safe-area-inset-right)) 8px max(16px, env(safe-area-inset-left));
+  background: var(--bar);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  backdrop-filter: saturate(180%) blur(20px);
+}
+.navbar-inner {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  max-width: 520px;
+  margin: 0 auto;
+}
+.nav-title { font-weight: 600; }
+.nav-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  justify-self: start;
+  min-height: 44px;
+  margin-left: -4px;
+  padding: 0 4px;
+  font: inherit;
+  border: 0;
+  background: transparent;
+  color: var(--tint);
+  cursor: pointer;
+}
+.nav-back:active { opacity: 0.5; }
+.nav-back:focus-visible { outline: 2px solid var(--tint); outline-offset: 2px; }
+h2.first { margin-top: 12px; }
+#category-form { scroll-margin-top: 72px; }
+.row select:disabled { opacity: 0.5; }
+.records li { align-items: center; }
+.records li.archived .title { color: var(--secondary); }
+
+/* Единица измерения после значения: "100 500 км", "3 200 zł" */
+.unit { flex: 0 0 auto; color: var(--secondary); }
+
+/* Серое значение в пустом поле пробега (последний пробег) должно читаться */
+#mileage::placeholder { color: var(--secondary); opacity: 0.8; }
+
+/* ---------- Строки-кнопки (раздел "Данные") ---------- */
+.row-button {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-height: 48px;
+  padding: 0 16px;
+  font: inherit;
+  text-align: left;
+  color: var(--tint);
+  background-color: transparent;
+  border: 0;
+  cursor: pointer;
+}
+.row-button + .row-button {
+  background-image: linear-gradient(var(--sep), var(--sep));
+  background-size: calc(100% - 16px) 0.5px;
+  background-position: right top;
+  background-repeat: no-repeat;
+}
+.row-button:active { background-color: color-mix(in srgb, var(--label) 8%, transparent); }
+.row-button:focus-visible { outline: 2px solid var(--tint); outline-offset: -2px; }
+
+/* ---------- Импорт ---------- */
+.row-button.destructive { color: var(--red); }
+.footer.pre { white-space: pre-line; }
+.footer:empty { display: none; }
+#import-form { margin-top: 24px; scroll-margin-top: 72px; }
+#import-form .footer { margin-top: -8px; margin-bottom: 14px; }
+
+/* ---------- Напоминание о копии ---------- */
+.reminder { margin: 0 0 16px; padding: 12px 16px; background: var(--cell); border-radius: 10px; }
+.reminder p { margin: 0 0 6px; font-size: 15px; }
+.reminder-actions { display: flex; gap: 20px; }
+.link-button {
+  min-height: 36px;
+  padding: 6px 0;
+  font: inherit;
+  font-weight: 600;
+  color: var(--tint);
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+.link-button.muted { color: var(--secondary); font-weight: 500; }
+.link-button:active { opacity: 0.5; }
+.link-button:focus-visible { outline: 2px solid var(--tint); outline-offset: 2px; }
+#snapshots-panel { margin-top: 24px; scroll-margin-top: 72px; }
+
+/* ---------- Режим приложения на iPhone (установлено на экран "Домой") ----------
+   Строка состояния (время, батарея) рисуется поверх страницы, поэтому закрываем её
+   размытой полосой: прокручиваемое содержимое не "налезает" на часы. */
+body::before {
+  content: "";
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: env(safe-area-inset-top, 0px);
+  background: var(--bar);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  backdrop-filter: saturate(180%) blur(20px);
+  z-index: 5;
+}
+#category-form, #import-form, #snapshots-panel { scroll-margin-top: calc(72px + env(safe-area-inset-top, 0px)); }

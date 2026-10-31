@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="light dark">
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <meta name="theme-color" content="#f2f2f7" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Финансы">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>Учёт финансов</title>
+  <link rel="stylesheet" href="style.css">
+  <!-- Dexie: обёртка над IndexedDB (хранилище в браузере) -->
+  <script src="https://cdn.jsdelivr.net/npm/dexie@3.2.7/dist/dexie.min.js"></script>
+</head>
+<body>
+
+  <!-- ================= Главный экран ================= -->
+  <div id="screen-main">
+    <header class="large-title">
+      <div class="title-row">
+        <h1>Автомобиль</h1>
+        <button type="button" id="open-settings" class="icon-button" aria-label="Настройки">
+          <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true">
+            <path d="M10.08 4.85L10.38 2.33L13.62 2.33L13.92 4.85A7.4 7.4 0 0 1 15.70 5.59L17.69 4.02L19.98 6.31L18.41 8.30A7.4 7.4 0 0 1 19.15 10.08L21.67 10.38L21.67 13.62L19.15 13.92A7.4 7.4 0 0 1 18.41 15.70L19.98 17.69L17.69 19.98L15.70 18.41A7.4 7.4 0 0 1 13.92 19.15L13.62 21.67L10.38 21.67L10.08 19.15A7.4 7.4 0 0 1 8.30 18.41L6.31 19.98L4.02 17.69L5.59 15.70A7.4 7.4 0 0 1 4.85 13.92L2.33 13.62L2.33 10.38L4.85 10.08A7.4 7.4 0 0 1 5.59 8.30L4.02 6.31L6.31 4.02L8.30 5.59A7.4 7.4 0 0 1 10.08 4.85Z"/>
+            <circle cx="12" cy="12" r="3"/>
+          </svg>
+        </button>
+      </div>
+      <p class="subtitle" id="header-mileage"></p>
+    </header>
+
+    <div class="tabbar">
+      <div class="tabs" role="tablist" aria-label="Экран">
+        <button class="tab" role="tab" id="tab-entry" aria-controls="view-entry" aria-selected="true">Ввод</button>
+        <button class="tab" role="tab" id="tab-stats" aria-controls="view-stats" aria-selected="false">Статистика</button>
+      </div>
+    </div>
+
+    <main>
+      <p id="app-error" class="banner" hidden></p>
+
+      <!-- Напоминание о резервной копии -->
+      <div class="reminder" id="backup-reminder" hidden>
+        <p id="backup-reminder-text"></p>
+        <div class="reminder-actions">
+          <button type="button" id="reminder-save" class="link-button">Сохранить копию</button>
+          <button type="button" id="reminder-later" class="link-button muted">Позже</button>
+        </div>
+      </div>
+
+      <!-- ===== Экран ввода ===== -->
+      <section id="view-entry" role="tabpanel" aria-labelledby="tab-entry">
+        <form id="entry-form" novalidate>
+
+          <p class="edit-banner" id="edit-banner" hidden></p>
+
+          <div class="group">
+            <div class="row">
+              <label for="date">Дата</label>
+              <input type="date" id="date" aria-describedby="error-date">
+              <p class="error" id="error-date"></p>
+            </div>
+            <div class="row">
+              <label for="category">Категория</label>
+              <select id="category" aria-describedby="error-category"></select>
+              <p class="error" id="error-category"></p>
+            </div>
+          </div>
+
+          <div class="group">
+            <div class="row">
+              <label for="mileage">Пробег</label>
+              <!-- Зелёная метка "+500 км" между названием и значением, только для топлива -->
+              <span id="mileage-delta" class="delta" hidden></span>
+              <input type="text" id="mileage" inputmode="numeric" placeholder="0" autocomplete="off" aria-describedby="mileage-hint error-mileage">
+              <span class="unit">км</span>
+              <p class="hint" id="mileage-hint"></p>
+              <p class="error" id="error-mileage"></p>
+            </div>
+            <div class="row">
+              <label for="amount">Сумма</label>
+              <input type="text" id="amount" inputmode="decimal" placeholder="0" autocomplete="off" aria-describedby="error-amount">
+              <select id="currency" aria-label="Валюта"></select>
+              <span class="unit" id="amount-unit"></span>
+              <p class="error" id="error-amount"></p>
+            </div>
+            <!-- Появляется, когда выбрана валюта не базовая (только в разделах с мультивалютностью) -->
+            <div class="row" id="field-rate" hidden>
+              <label for="rate" id="rate-label">Курс</label>
+              <input type="text" id="rate" inputmode="decimal" placeholder="3,9" autocomplete="off" aria-describedby="rate-hint rate-preview error-rate">
+              <p class="hint" id="rate-hint"></p>
+              <p class="hint" id="rate-preview"></p>
+              <p class="error" id="error-rate"></p>
+            </div>
+            <!-- Только для категории "Топливо" -->
+            <div class="row" id="field-liters" hidden>
+              <label for="liters">Литры</label>
+              <input type="text" id="liters" inputmode="decimal" placeholder="0" autocomplete="off" aria-describedby="error-liters">
+              <span class="unit">л</span>
+              <p class="error" id="error-liters"></p>
+            </div>
+            <!-- Для всех остальных категорий -->
+            <div class="row" id="field-comment" hidden>
+              <label for="comment">Комментарий</label>
+              <input type="text" id="comment" maxlength="200" placeholder="Необязательно" autocomplete="off" aria-describedby="error-comment">
+              <p class="error" id="error-comment"></p>
+            </div>
+          </div>
+
+          <button type="submit" id="save" class="primary">Сохранить</button>
+          <button type="button" id="cancel-edit" class="secondary" hidden>Отмена</button>
+          <button type="button" id="delete" class="secondary destructive" hidden>Удалить запись</button>
+        </form>
+
+        <h2>Последние записи</h2>
+        <ul id="records" class="group records"></ul>
+        <button type="button" id="show-more" class="secondary" hidden>Показать ещё</button>
+      </section>
+
+      <!-- ===== Экран статистики (графики добавим на этапе 8) ===== -->
+      <section id="view-stats" role="tabpanel" aria-labelledby="tab-stats" hidden>
+        <div class="group">
+          <div class="row">
+            <span class="row-label">Общий пробег</span>
+            <span class="row-value" id="stat-mileage">0 км</span>
+          </div>
+        </div>
+        <p class="footer">Графики расходов появятся на следующих этапах.</p>
+      </section>
+    </main>
+  </div>
+
+  <!-- ================= Экран настроек ================= -->
+  <div id="screen-settings" hidden>
+    <div class="navbar">
+      <div class="navbar-inner">
+        <button type="button" id="settings-back" class="nav-back">
+          <svg viewBox="0 0 10 18" width="10" height="18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8.5 1.5 1.5 9l7 7.5"/></svg>
+          Назад
+        </button>
+        <span class="nav-title">Настройки</span>
+        <span></span>
+      </div>
+    </div>
+
+    <main>
+      <h2 class="first">Категории</h2>
+
+      <!-- Редактор категории: открывается для новой или выбранной категории -->
+      <form id="category-form" novalidate hidden>
+        <p class="edit-banner" id="cat-banner"></p>
+        <div class="group">
+          <div class="row">
+            <label for="cat-name">Название</label>
+            <input type="text" id="cat-name" maxlength="40" placeholder="Например, Мойка" autocomplete="off" aria-describedby="error-cat-name">
+            <p class="error" id="error-cat-name"></p>
+          </div>
+          <div class="row">
+            <label for="cat-kind">Тип</label>
+            <select id="cat-kind" aria-describedby="cat-kind-hint error-cat-kind">
+              <option value="regular">Обычная</option>
+              <option value="fuel">Топливо</option>
+            </select>
+            <p class="hint" id="cat-kind-hint"></p>
+            <p class="error" id="error-cat-kind"></p>
+          </div>
+        </div>
+        <button type="submit" id="cat-save" class="primary">Сохранить</button>
+        <button type="button" id="cat-cancel" class="secondary">Отмена</button>
+        <button type="button" id="cat-delete" class="secondary destructive" hidden>Удалить категорию</button>
+      </form>
+
+      <ul id="categories-list" class="group records"></ul>
+      <p class="footer">Скрытые категории не показываются в форме, но их записи остаются в истории.</p>
+      <button type="button" id="add-category" class="secondary">Добавить категорию</button>
+
+      <h2>Данные</h2>
+      <div class="group">
+        <button type="button" id="export-backup" class="row-button">Сохранить резервную копию</button>
+        <button type="button" id="restore-backup" class="row-button">Восстановить из копии…</button>
+        <button type="button" id="open-snapshots" class="row-button">Автокопии в приложении…</button>
+        <button type="button" id="import-csv" class="row-button">Импорт из CSV (Google Таблицы)…</button>
+        <button type="button" id="export-csv" class="row-button">Выгрузить в CSV для таблиц</button>
+        <button type="button" id="clear-records" class="row-button destructive">Удалить все записи…</button>
+      </div>
+      <p class="footer pre" id="data-footer"></p>
+      <input type="file" id="restore-file" accept=".json,application/json" hidden>
+      <input type="file" id="import-file" accept=".csv,text/csv,text/plain" hidden>
+
+      <!-- Предпросмотр импорта: открывается после выбора CSV-файла -->
+      <form id="import-form" novalidate hidden>
+        <p class="edit-banner" id="import-banner"></p>
+        <div class="group">
+          <div class="row"><span class="row-label">Найдено строк</span><span class="row-value" id="import-total"></span></div>
+          <div class="row"><span class="row-label">Будет добавлено</span><span class="row-value" id="import-ready"></span></div>
+          <div class="row"><span class="row-label">Уже есть (пропуск)</span><span class="row-value" id="import-dups"></span></div>
+          <div class="row"><span class="row-label">С ошибками</span><span class="row-value" id="import-errors"></span></div>
+          <div class="row">
+            <label for="import-category">Категория</label>
+            <select id="import-category"></select>
+            <p class="hint">Для строк, у которых в файле нет своей категории.</p>
+          </div>
+        </div>
+        <p class="footer pre" id="import-details"></p>
+        <button type="submit" id="import-confirm" class="primary">Импортировать</button>
+        <button type="button" id="import-cancel" class="secondary">Отмена</button>
+      </form>
+
+      <!-- Автокопии внутри приложения -->
+      <div id="snapshots-panel" hidden>
+        <p class="edit-banner">Автокопии в приложении</p>
+        <ul id="snapshots-list" class="group records"></ul>
+        <p class="footer">Нажмите на копию, чтобы вернуть данные к тому состоянию. Приложение само делает копию в начале дня и перед опасными действиями (восстановление, импорт, удаление всех записей), хранятся последние 10. Они лежат в этом же браузере, поэтому от его очистки не защищают, для этого нужна резервная копия-файл.</p>
+        <button type="button" id="snapshots-close" class="secondary">Закрыть</button>
+      </div>
+    </main>
+  </div>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>

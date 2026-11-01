@@ -8,7 +8,7 @@ import {
 import { parseCsv, normalizeNumberText, parseDateText, prepareImport, describeImport } from './importer.js';
 import {
   niceScale, percentChange, getPeriod, groupRanges, getMileageDriven, summarize,
-  cumulativeByDay, byCategory, buildStatsModel, shiftMonth,
+  cumulativeByDay, byCategory, buildStatsModel, shiftMonth, getHistoryOptions, buildHistory,
 } from './stats.js';
 
 const results = [];
@@ -337,6 +337,35 @@ check('сентябрь: график на весь месяц и август',
 check('сентябрь: стрелки — назад нельзя (первая запись), вперёд можно', mSep.monthNav.canPrev === false && mSep.monthNav.canNext === true && mSep.monthNav.nextMonth === '2026-10');
 check('октябрь: стрелки — назад можно, вперёд нельзя', mMonth.monthNav.canPrev === true && mMonth.monthNav.canNext === false && mMonth.monthNav.prevMonth === '2026-09');
 check('стрелок нет вне режима "месяц"', mYear.monthNav === null);
+
+// Журнал по категориям
+const hCats = [
+  { id: 1, name: 'Топливо', kind: 'fuel' },
+  { id: 2, name: 'Ремонт', kind: 'regular' },
+  { id: 3, name: 'Шины', kind: 'regular' },
+  { id: 4, name: 'Старая', kind: 'regular', archived: true },
+  { id: 5, name: 'Скрытая пустая', kind: 'regular', archived: true },
+];
+const hRecs = [
+  { id: 1, date: '2026-03-10', category_id: 2, mileage: 100500, amount: 200, comment: 'Колодки' },
+  { id: 2, date: '2026-03-01', category_id: 1, mileage: 100000, amount: 300 },
+  { id: 3, date: '2026-02-05', category_id: 2, mileage: 99000, amount: 150, comment: 'Масло' },
+  { id: 4, date: '2026-03-10', category_id: 3, mileage: 100500, amount: 800 },
+  { id: 5, date: '2026-01-20', category_id: 4, mileage: 98000, amount: 50, comment: 'Мойка' },
+  { id: 6, date: '2026-04-01', category_id: 99, mileage: 101000, amount: 10 },
+];
+const hOptions = getHistoryOptions(hCats, hRecs);
+check('журнал: в списке нет топлива и скрытых без записей', hOptions.map((o) => o.label).join('|') === 'Все, кроме топлива|Ремонт|Шины|Старая (скрыта)');
+const hAll = buildHistory({ records: hRecs, categories: hCats, selection: 'all' });
+check('журнал "все": топливо исключено, остальные от старых к новым', hAll.items.map((i) => i.id).join() === '5,3,1,4,6');
+check('журнал "все": ничья по дате решается по порядку ввода', hAll.items.findIndex((i) => i.id === 1) < hAll.items.findIndex((i) => i.id === 4));
+check('журнал "все": подписи категорий и "Без категории"', hAll.showCategory === true && hAll.items[0].categoryName === 'Старая' && hAll.items[4].categoryName === 'Без категории');
+check('журнал: поля записи', hAll.items[1].date === '2026-02-05' && hAll.items[1].mileage === 99000 && hAll.items[1].amount === 150 && hAll.items[1].comment === 'Масло');
+check('журнал: пустой комментарий', hAll.items[3].comment === '');
+check('журнал "все": сумма и количество', hAll.count === 5 && hAll.total === 1210);
+const hRepair = buildHistory({ records: hRecs, categories: hCats, selection: '2' });
+check('журнал по категории: только она, по возрастанию даты', hRepair.items.map((i) => i.id).join() === '3,1' && hRepair.showCategory === false && hRepair.total === 350);
+check('журнал: категорию топливо выбрать нельзя', buildHistory({ records: hRecs, categories: hCats, selection: '1' }).count === 0);
 
 // Вывод
 const failed = results.filter((r) => !r.ok);

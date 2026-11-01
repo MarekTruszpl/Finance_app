@@ -1,13 +1,12 @@
 // stats-view.js — показывает вкладку "Статистика": строки, графики и списки.
 // Данные приходят готовыми из stats.js (buildStatsModel).
-import { BASE_CURRENCY, CURRENCIES } from './defaults.js';
+import { BASE_CURRENCY } from './defaults.js';
+import { num, money, symbolOf } from './format.js';
 import { percentChange } from './stats.js';
 import { renderLineChart, renderBarChart, renderLegend } from './charts.js';
 
 const $ = (id) => document.getElementById(id);
-const symbol = CURRENCIES.find((c) => c.code === BASE_CURRENCY)?.symbol ?? BASE_CURRENCY;
-const num = (n, digits = 0) => n.toLocaleString('ru-RU', { minimumFractionDigits: digits, maximumFractionDigits: digits });
-const money = (n, digits = 0) => `${num(n, digits)} ${symbol}`;
+const symbol = symbolOf(BASE_CURRENCY);
 
 export function readStatsPeriod() {
   return $('stats-period').value;
@@ -82,6 +81,24 @@ function renderSummary(model) {
   );
 }
 
+// Подсказка и подробности под графиком (появляются по нажатию на столбец)
+function showHint(id) {
+  const el = $(id);
+  el.hidden = false;
+  el.replaceChildren(box('info-hint', 'Нажмите на столбец, чтобы увидеть подробности'));
+}
+
+// rows: [{ label, value, strong? }]
+function showInfo(id, title, rows) {
+  const items = [box('info-title', title)];
+  for (const r of rows) {
+    const row = box(r.strong ? 'info-row info-strong' : 'info-row');
+    row.append(box('', r.label), box('', r.value));
+    items.push(row);
+  }
+  $(id).replaceChildren(...items);
+}
+
 function renderCharts(model) {
   const { chart } = model;
   if (chart.type === 'cumulative') {
@@ -98,12 +115,15 @@ function renderCharts(model) {
       { label: chart.currentLabel, swatch: 'swatch-current' },
       { label: chart.previousLabel, swatch: 'swatch-previous' },
     ]);
+    $('stats-chart-info').hidden = true; // у линий подробностей по нажатию пока нет
     $('stats-chart2-block').hidden = true;
     return;
   }
 
   const unit = model.grouping === 'year' ? 'годам' : 'месяцам';
   $('stats-chart-title').textContent = `Расходы по ${unit}, ${symbol}`;
+  const groups = model.groups; // столбики идут в том же порядке, что и группы
+  showHint('stats-chart-info');
   renderBarChart($('stats-chart'), {
     labels: chart.labels,
     stacks: [
@@ -111,6 +131,12 @@ function renderCharts(model) {
       { className: 'bar-other', values: chart.other },
     ],
     ariaLabel: `Расходы по ${unit}: топливо и остальное`,
+    slotLabels: groups.map((g) => `${g.title}: всего ${money(g.total)}`),
+    onSelect: (i) => showInfo('stats-chart-info', groups[i].title, [
+      { label: 'Топливо', value: money(groups[i].fuel) },
+      { label: 'Сервис и прочее', value: money(groups[i].other) },
+      { label: 'Всего', value: money(groups[i].total), strong: true },
+    ]),
   });
   renderLegend($('stats-legend'), [
     { label: 'Топливо', swatch: 'swatch-fuel' },
@@ -119,10 +145,16 @@ function renderCharts(model) {
 
   $('stats-chart2-block').hidden = false;
   $('stats-chart2-title').textContent = `Пробег по ${unit}, км`;
+  showHint('stats-chart2-info');
   renderBarChart($('stats-chart2'), {
     labels: chart.labels,
     stacks: [{ className: 'bar-mileage', values: chart.mileage }],
     ariaLabel: `Пробег по ${unit}`,
+    slotLabels: groups.map((g) => `${g.title}: пробег ${num(g.mileage)} км`),
+    onSelect: (i) => showInfo('stats-chart2-info', groups[i].title, [
+      { label: 'Пробег', value: `${num(groups[i].mileage)} км` },
+      { label: 'Стоимость 1000 км (без топлива)', value: groups[i].costPer1000 == null ? '—' : money(groups[i].costPer1000) },
+    ]),
   });
 }
 

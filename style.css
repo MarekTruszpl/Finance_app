@@ -68,7 +68,7 @@ h1 { margin: 0; font-size: 34px; line-height: 1.15; font-weight: 700; letter-spa
 }
 .tabs {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(3, 1fr);
   max-width: 520px;
   margin: 0 auto;
   padding: 2px;
@@ -483,3 +483,20 @@ body::before {
 .stat-name { padding-top: 2px; }
 .stat-name .row-label { display: block; padding-top: 0; }
 .stat-note { font-size: 13px; color: var(--secondary); }
+
+/* ---------- Журнал ---------- */
+.hist-body { flex: 1; min-width: 0; }
+.hist-top { display: flex; justify-content: space-between; gap: 12px; }
+.hist-comment { margin-top: 2px; overflow-wrap: anywhere; }
+
+/* ---------- Нажатие на столбец графика ---------- */
+.bar-bg { fill: transparent; }
+.bar-bg.selected { fill: var(--fill); }
+.bar-hit { fill: transparent; cursor: pointer; }
+.bar-hit:focus-visible { outline: 2px solid var(--tint); outline-offset: -2px; }
+.chart-info { padding: 10px 8px 2px; font-size: 14px; }
+.chart-info:empty { display: none; }
+.info-hint { color: var(--secondary); }
+.info-title { margin-bottom: 4px; font-weight: 600; }
+.info-row { display: flex; justify-content: space-between; gap: 12px; }
+.info-strong { font-weight: 600; }

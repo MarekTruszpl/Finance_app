@@ -40,6 +40,7 @@
     <div class="tabbar">
       <div class="tabs" role="tablist" aria-label="Экран">
         <button class="tab" role="tab" id="tab-entry" aria-controls="view-entry" aria-selected="true">Ввод</button>
+        <button class="tab" role="tab" id="tab-history" aria-controls="view-history" aria-selected="false">Журнал</button>
         <button class="tab" role="tab" id="tab-stats" aria-controls="view-stats" aria-selected="false">Статистика</button>
       </div>
     </div>
@@ -125,6 +126,18 @@
         <button type="button" id="show-more" class="secondary" hidden>Показать ещё</button>
       </section>
 
+      <!-- ===== Журнал: все записи категории (кроме топлива) от старых к новым ===== -->
+      <section id="view-history" role="tabpanel" aria-labelledby="tab-history" hidden>
+        <div class="group">
+          <div class="row">
+            <label for="history-category">Категория</label>
+            <select id="history-category"></select>
+          </div>
+        </div>
+        <p class="footer" id="history-summary"></p>
+        <ul id="history-list" class="group records"></ul>
+      </section>
+
       <!-- ===== Экран статистики (графики добавим на этапе 8) ===== -->
       <section id="view-stats" role="tabpanel" aria-labelledby="tab-stats" hidden>
         <div class="group">
@@ -158,11 +171,15 @@
           <div class="chart-card">
             <div id="stats-chart"></div>
             <div class="legend" id="stats-legend"></div>
+            <div class="chart-info" id="stats-chart-info" aria-live="polite"></div>
           </div>
 
           <div id="stats-chart2-block">
             <h2 id="stats-chart2-title"></h2>
-            <div class="chart-card"><div id="stats-chart2"></div></div>
+            <div class="chart-card">
+              <div id="stats-chart2"></div>
+              <div class="chart-info" id="stats-chart2-info" aria-live="polite"></div>
+            </div>
           </div>
 
           <h2>По категориям</h2>

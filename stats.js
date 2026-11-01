@@ -269,3 +269,49 @@ function monthNavigation(selected, firstMonth, currentMonth, title) {
     nextMonth: shiftMonth(selected, 1),
   };
 }
+
+// ---------- Журнал по категориям (всё, кроме топлива) ----------
+
+// Что можно выбрать в списке: "Все, кроме топлива" и каждая категория не по топливу.
+// Скрытая категория показывается, только если у неё есть записи.
+export function getHistoryOptions(categories, records) {
+  const used = new Set(records.map((r) => r.category_id));
+  const options = [{ value: 'all', label: 'Все, кроме топлива' }];
+  for (const c of categories) {
+    if (c.kind === 'fuel') continue;
+    if (c.archived && !used.has(c.id)) continue;
+    options.push({ value: String(c.id), label: c.archived ? `${c.name} (скрыта)` : c.name });
+  }
+  return options;
+}
+
+// selection — 'all' или id категории (строкой). Записи по топливу в журнал не попадают никогда.
+// Порядок: от старой даты к новой.
+export function buildHistory({ records, categories, selection }) {
+  const byId = new Map(categories.map((c) => [c.id, c]));
+  const isFuel = (r) => byId.get(r.category_id)?.kind === 'fuel';
+  const all = selection == null || selection === 'all';
+  const wanted = all
+    ? (r) => !isFuel(r)
+    : (r) => r.category_id === Number(selection) && !isFuel(r);
+
+  const picked = records
+    .filter(wanted)
+    .sort((a, b) => a.date.localeCompare(b.date) || a.id - b.id);
+
+  return {
+    count: picked.length,
+    total: round2(picked.reduce((sum, r) => sum + amountOf(r), 0)),
+    showCategory: all, // в общем списке подписываем категорию у каждой записи
+    items: picked.map((r) => ({
+      id: r.id,
+      date: r.date,
+      mileage: r.mileage,
+      amount: r.amount,
+      currency: r.currency,
+      comment: r.comment ?? '',
+      categoryName: byId.get(r.category_id)?.name ?? 'Без категории',
+      record: r,
+    })),
+  };
+}

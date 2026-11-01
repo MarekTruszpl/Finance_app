@@ -62,7 +62,9 @@ export function renderLineChart(container, { series, pointsCount, ariaLabel }) {
 
 // Столбики, можно составные (топливо + остальное)
 // stacks: [{ className, values: [число на каждую подпись] }], снизу вверх
-export function renderBarChart(container, { labels, stacks, ariaLabel }) {
+// onSelect(i) — вызывается при нажатии на столбец (нажимать можно на всю колонку, даже если столбик низкий)
+// slotLabels[i] — подпись колонки для скринридера
+export function renderBarChart(container, { labels, stacks, ariaLabel, onSelect = null, slotLabels = [] }) {
   const height = 190;
   const plotW = W - MARGIN.left - MARGIN.right;
   const plotH = height - MARGIN.top - MARGIN.bottom;
@@ -74,9 +76,18 @@ export function renderBarChart(container, { labels, stacks, ariaLabel }) {
   const slot = plotW / Math.max(1, labels.length);
   const barW = Math.min(28, slot * 0.62);
   const labelEvery = Math.ceil(labels.length / 12); // не больше ~12 подписей под осью
+  const slotX = (i) => MARGIN.left + slot * i;
 
+  // 1) Подсветка выбранной колонки (рисуется под столбиками)
+  const backgrounds = labels.map((_, i) => {
+    const bg = el('rect', { x: slotX(i).toFixed(1), y: MARGIN.top, width: slot.toFixed(1), height: plotH, class: 'bar-bg' });
+    svg.append(bg);
+    return bg;
+  });
+
+  // 2) Столбики и подписи под осью
   labels.forEach((label, i) => {
-    const x = MARGIN.left + slot * i + (slot - barW) / 2;
+    const x = slotX(i) + (slot - barW) / 2;
     let top = MARGIN.top + plotH;
     for (const s of stacks) {
       const value = s.values[i] || 0;
@@ -89,6 +100,34 @@ export function renderBarChart(container, { labels, stacks, ariaLabel }) {
       svg.append(el('text', { x: (x + barW / 2).toFixed(1), y: height - 6, 'text-anchor': 'middle', class: 'axis-label' }, label));
     }
   });
+
+  // 3) Невидимые области нажатия поверх всего
+  if (onSelect) {
+    labels.forEach((label, i) => {
+      const hit = el('rect', {
+        x: slotX(i).toFixed(1),
+        y: MARGIN.top,
+        width: slot.toFixed(1),
+        height: height - MARGIN.top,
+        class: 'bar-hit',
+        tabindex: 0,
+        role: 'button',
+        'aria-label': slotLabels[i] ?? label,
+      });
+      const select = () => {
+        backgrounds.forEach((bg, j) => bg.setAttribute('class', j === i ? 'bar-bg selected' : 'bar-bg'));
+        onSelect(i);
+      };
+      hit.addEventListener('click', select);
+      hit.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          select();
+        }
+      });
+      svg.append(hit);
+    });
+  }
   container.replaceChildren(svg);
 }
 

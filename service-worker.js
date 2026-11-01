@@ -24,6 +24,8 @@ const APP_FILES = [
   './stats.js',
   './stats-view.js',
   './charts.js',
+  './format.js',
+  './history-view.js',
   './libs/dexie.min.js',
   './manifest.json',
   './icons/icon-192.png',

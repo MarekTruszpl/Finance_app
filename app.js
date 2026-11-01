@@ -13,7 +13,8 @@ import {
   daysSince, STALE_RATE_DAYS, buildBackup, validateBackup, buildCsv, getBackupReminder,
 } from './logic.js';
 import { prepareImport, describeImport } from './importer.js';
-import { buildStatsModel } from './stats.js';
+import { buildStatsModel, buildHistory, getHistoryOptions } from './stats.js';
+import { fillHistoryOptions, readHistorySelection, onHistoryChange, renderHistory } from './history-view.js';
 import { renderStatsView, readStatsPeriod, onStatsPeriodChange, onMonthNav } from './stats-view.js';
 import * as ui from './ui.js';
 
@@ -133,6 +134,7 @@ async function reload() {
   renderList();
   ui.renderStats({ lastMileage: getLastMileage(records) });
   refreshStats();
+  refreshHistory();
   refreshForm();
   refreshReminder();
   refreshDataStatus();
@@ -593,6 +595,25 @@ function handleMonthNav(direction) {
   refreshStats();
 }
 
+// ---------- Журнал ----------
+
+// Журнал: всё, что внесено в категории, кроме топлива, от старых записей к новым
+function refreshHistory({ rebuildOptions = true } = {}) {
+  let selection = readHistorySelection() || 'all';
+  if (rebuildOptions) {
+    const options = getHistoryOptions(categories, records);
+    if (!options.some((o) => o.value === selection)) selection = 'all';
+    fillHistoryOptions(options, selection);
+  }
+  renderHistory(buildHistory({ records, categories, selection }), { onSelect: handleHistorySelect });
+}
+
+// Нажали на запись в журнале: открываем её на редактирование во вкладке "Ввод"
+function handleHistorySelect(record) {
+  ui.showTab('entry');
+  handleSelect(record);
+}
+
 // ---------- Работа без интернета ----------
 
 // Service worker хранит копию приложения на устройстве. Работает только по https или на localhost.
@@ -652,6 +673,7 @@ function registerServiceWorker() {
 
     onStatsPeriodChange(handleStatsPeriodChange); // вкладка "Статистика"
     onMonthNav(handleMonthNav);
+    onHistoryChange(() => refreshHistory({ rebuildOptions: false }));
 
     // Напоминание о копии
     ui.onReminderSave(handleBackup);

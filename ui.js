@@ -26,20 +26,25 @@ function formatMoney(amount, currency = BASE_CURRENCY) {
   }
 }
 
-// ---------- Переключатель "Ввод / Статистика" ----------
+// ---------- Переключатель "Ввод / Журнал / Статистика" ----------
+const TABS = {
+  entry: ['tab-entry', 'view-entry'],
+  history: ['tab-history', 'view-history'],
+  stats: ['tab-stats', 'view-stats'],
+};
+
+// Показать вкладку: 'entry' | 'history' | 'stats'
+export function showTab(name) {
+  for (const [key, [tabId, panelId]] of Object.entries(TABS)) {
+    const active = key === name;
+    $(tabId).setAttribute('aria-selected', String(active));
+    $(panelId).hidden = !active;
+  }
+}
+
 export function initTabs() {
-  const tabs = [
-    { tab: $('tab-entry'), panel: $('view-entry') },
-    { tab: $('tab-stats'), panel: $('view-stats') },
-  ];
-  for (const current of tabs) {
-    current.tab.addEventListener('click', () => {
-      for (const t of tabs) {
-        const active = t === current;
-        t.tab.setAttribute('aria-selected', String(active));
-        t.panel.hidden = !active;
-      }
-    });
+  for (const [key, [tabId]] of Object.entries(TABS)) {
+    $(tabId).addEventListener('click', () => showTab(key));
   }
 }
 

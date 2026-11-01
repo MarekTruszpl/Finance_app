@@ -357,14 +357,14 @@ const hRecs = [
 const hOptions = getHistoryOptions(hCats, hRecs);
 check('журнал: в списке нет топлива и скрытых без записей', hOptions.map((o) => o.label).join('|') === 'Все, кроме топлива|Ремонт|Шины|Старая (скрыта)');
 const hAll = buildHistory({ records: hRecs, categories: hCats, selection: 'all' });
-check('журнал "все": топливо исключено, остальные от старых к новым', hAll.items.map((i) => i.id).join() === '5,3,1,4,6');
-check('журнал "все": ничья по дате решается по порядку ввода', hAll.items.findIndex((i) => i.id === 1) < hAll.items.findIndex((i) => i.id === 4));
-check('журнал "все": подписи категорий и "Без категории"', hAll.showCategory === true && hAll.items[0].categoryName === 'Старая' && hAll.items[4].categoryName === 'Без категории');
-check('журнал: поля записи', hAll.items[1].date === '2026-02-05' && hAll.items[1].mileage === 99000 && hAll.items[1].amount === 150 && hAll.items[1].comment === 'Масло');
-check('журнал: пустой комментарий', hAll.items[3].comment === '');
+check('журнал "все": топливо исключено, остальные от новых к старым', hAll.items.map((i) => i.id).join() === '6,4,1,3,5');
+check('журнал "все": при одной дате выше запись, внесённая позже', hAll.items.findIndex((i) => i.id === 4) < hAll.items.findIndex((i) => i.id === 1));
+check('журнал "все": подписи категорий и "Без категории"', hAll.showCategory === true && hAll.items[0].categoryName === 'Без категории' && hAll.items[4].categoryName === 'Старая');
+check('журнал: поля записи', hAll.items[3].date === '2026-02-05' && hAll.items[3].mileage === 99000 && hAll.items[3].amount === 150 && hAll.items[3].comment === 'Масло');
+check('журнал: пустой комментарий', hAll.items[1].comment === '');
 check('журнал "все": сумма и количество', hAll.count === 5 && hAll.total === 1210);
 const hRepair = buildHistory({ records: hRecs, categories: hCats, selection: '2' });
-check('журнал по категории: только она, по возрастанию даты', hRepair.items.map((i) => i.id).join() === '3,1' && hRepair.showCategory === false && hRepair.total === 350);
+check('журнал по категории: только она, свежие сверху', hRepair.items.map((i) => i.id).join() === '1,3' && hRepair.showCategory === false && hRepair.total === 350);
 check('журнал: категорию топливо выбрать нельзя', buildHistory({ records: hRecs, categories: hCats, selection: '1' }).count === 0);
 
 // Вывод

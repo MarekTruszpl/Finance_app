@@ -286,7 +286,7 @@ export function getHistoryOptions(categories, records) {
 }
 
 // selection — 'all' или id категории (строкой). Записи по топливу в журнал не попадают никогда.
-// Порядок: от старой даты к новой.
+// Порядок: сверху свежие записи, ниже старые.
 export function buildHistory({ records, categories, selection }) {
   const byId = new Map(categories.map((c) => [c.id, c]));
   const isFuel = (r) => byId.get(r.category_id)?.kind === 'fuel';
@@ -297,7 +297,7 @@ export function buildHistory({ records, categories, selection }) {
 
   const picked = records
     .filter(wanted)
-    .sort((a, b) => a.date.localeCompare(b.date) || a.id - b.id);
+    .sort((a, b) => b.date.localeCompare(a.date) || b.id - a.id); // новые сверху; при одной дате выше внесённая позже
 
   return {
     count: picked.length,

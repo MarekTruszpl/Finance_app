@@ -2,6 +2,9 @@
 <html lang="ru">
 <head>
   <meta charset="UTF-8">
+  <!-- Политика безопасности: страница может запускать код только со своего адреса,
+       не может отправлять данные на другие адреса, подгружать чужие картинки и отправлять формы. -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; manifest-src 'self'; worker-src 'self'; form-action 'none'; base-uri 'none'">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="color-scheme" content="light dark">
   <link rel="manifest" href="manifest.json">
@@ -15,7 +18,7 @@
   <title>Учёт финансов</title>
   <link rel="stylesheet" href="style.css">
   <!-- Dexie: обёртка над IndexedDB (хранилище в браузере) -->
-  <script src="https://cdn.jsdelivr.net/npm/dexie@3.2.7/dist/dexie.min.js"></script>
+  <script src="libs/dexie.min.js"></script>
 </head>
 <body>
 
@@ -126,11 +129,50 @@
       <section id="view-stats" role="tabpanel" aria-labelledby="tab-stats" hidden>
         <div class="group">
           <div class="row">
-            <span class="row-label">Общий пробег</span>
-            <span class="row-value" id="stat-mileage">0 км</span>
+            <label for="stats-period">Период</label>
+            <select id="stats-period">
+              <option value="month">Текущий месяц</option>
+              <option value="year">Текущий год</option>
+              <option value="lastYear">Прошлый год</option>
+              <option value="all">Всё время</option>
+            </select>
+          </div>
+          <!-- Стрелки выбора месяца: видны только для периода "Текущий месяц" -->
+          <div class="row month-nav" id="month-nav" hidden>
+            <button type="button" id="month-prev" class="nav-arrow" aria-label="Предыдущий месяц">
+              <svg viewBox="0 0 10 18" width="10" height="18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8.5 1.5 1.5 9l7 7.5"/></svg>
+            </button>
+            <span class="month-title" id="month-nav-title"></span>
+            <button type="button" id="month-next" class="nav-arrow" aria-label="Следующий месяц">
+              <svg viewBox="0 0 10 18" width="10" height="18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1.5 1.5 8.5 9l-7 7.5"/></svg>
+            </button>
           </div>
         </div>
-        <p class="footer">Графики расходов появятся на следующих этапах.</p>
+        <p class="footer" id="stats-range"></p>
+
+        <div class="group" id="stats-summary"></div>
+        <p class="footer" id="stats-empty" hidden>За этот период записей нет.</p>
+
+        <div id="stats-details">
+          <h2 id="stats-chart-title"></h2>
+          <div class="chart-card">
+            <div id="stats-chart"></div>
+            <div class="legend" id="stats-legend"></div>
+          </div>
+
+          <div id="stats-chart2-block">
+            <h2 id="stats-chart2-title"></h2>
+            <div class="chart-card"><div id="stats-chart2"></div></div>
+          </div>
+
+          <h2>По категориям</h2>
+          <ul id="stats-categories" class="group records"></ul>
+
+          <div id="stats-groups-block">
+            <h2 id="stats-groups-title"></h2>
+            <ul id="stats-groups" class="group records"></ul>
+          </div>
+        </div>
       </section>
     </main>
   </div>

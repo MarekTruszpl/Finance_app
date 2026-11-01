@@ -9,10 +9,12 @@ import {
 } from './storage.js';
 import {
   today, parseNumber, validateRecord, validateCategory, getVisibleCategories,
-  getTotalMileage, getLastMileage, getLastMileageForGroup, getFuelMileageInfo, getLastRate, convertToBase,
+  getLastMileage, getLastMileageForGroup, getFuelMileageInfo, getLastRate, convertToBase,
   daysSince, STALE_RATE_DAYS, buildBackup, validateBackup, buildCsv, getBackupReminder,
 } from './logic.js';
 import { prepareImport, describeImport } from './importer.js';
+import { buildStatsModel } from './stats.js';
+import { renderStatsView, readStatsPeriod, onStatsPeriodChange, onMonthNav } from './stats-view.js';
 import * as ui from './ui.js';
 
 const SECTION = 'car';
@@ -30,6 +32,8 @@ let importResult = null;   // результат prepareImport для предп
 let allCategories = [];   // категории всех разделов (для резервной копии и CSV)
 let persisted = null;     // включено ли постоянное хранение: true / false / null (браузер не сообщает)
 let snapshotsOpen = false; // открыт ли список автокопий
+let statsMonth = null;    // выбранный на вкладке "Статистика" месяц ('2026-09'); null — текущий
+let statsModel = null;    // последние показанные данные статистики (там же доступные соседние месяцы)
 
 const findCategory = (id) => categories.find((c) => c.id === id);
 const fmt = (n) => n.toLocaleString('ru-RU');
@@ -127,7 +131,8 @@ async function reload() {
   allCategories = await getAllCategories();
   records = await getRecords(SECTION);
   renderList();
-  ui.renderStats({ totalMileage: getTotalMileage(records), lastMileage: getLastMileage(records) });
+  ui.renderStats({ lastMileage: getLastMileage(records) });
+  refreshStats();
   refreshForm();
   refreshReminder();
   refreshDataStatus();
@@ -565,6 +570,29 @@ async function handleSnapshotRestore(snapshot) {
   }
 }
 
+// ---------- Статистика ----------
+
+function refreshStats() {
+  statsModel = buildStatsModel({ kind: readStatsPeriod(), month: statsMonth, records, categories, today: today() });
+  renderStatsView(statsModel);
+}
+
+// Сменили период: возвращаемся к текущему месяцу
+function handleStatsPeriodChange() {
+  statsMonth = null;
+  refreshStats();
+}
+
+// Стрелки: -1 — предыдущий месяц, +1 — следующий
+function handleMonthNav(direction) {
+  const nav = statsModel?.monthNav;
+  const target = direction < 0 ? nav?.prevMonth : nav?.nextMonth;
+  const allowed = direction < 0 ? nav?.canPrev : nav?.canNext;
+  if (!target || !allowed) return;
+  statsMonth = target;
+  refreshStats();
+}
+
 // ---------- Работа без интернета ----------
 
 // Service worker хранит копию приложения на устройстве. Работает только по https или на localhost.
@@ -621,6 +649,9 @@ function registerServiceWorker() {
     ui.onImportConfirm(handleImportConfirm);
     ui.onImportCancel(closeImport);
     ui.onClearRecords(handleClearRecords);
+
+    onStatsPeriodChange(handleStatsPeriodChange); // вкладка "Статистика"
+    onMonthNav(handleMonthNav);
 
     // Напоминание о копии
     ui.onReminderSave(handleBackup);

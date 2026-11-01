@@ -288,9 +288,8 @@ export function renderRecords(records, nameById, { selectedId = null, onSelect =
   }
 }
 
-// totalMileage — на вкладке "Статистика", lastMileage — подпись под заголовком
-export function renderStats({ totalMileage, lastMileage }) {
-  $('stat-mileage').textContent = `${formatNumber(totalMileage)} км`;
+// Подпись под заголовком: последний введённый пробег
+export function renderStats({ lastMileage }) {
   $('header-mileage').textContent =
     lastMileage == null ? '' : `Последний пробег: ${formatNumber(lastMileage)} км`;
 }

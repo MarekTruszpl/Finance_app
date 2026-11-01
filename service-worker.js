@@ -2,12 +2,13 @@
 // Данные пользователя здесь не участвуют: они лежат в IndexedDB и обновление кода их не затрагивает.
 //
 // Как обновляются файлы: когда есть интернет, всегда берём свежую версию с сервера (и сохраняем её),
-// а без интернета открываем сохранённую. Поэтому после загрузки новой версии на хостинг
-// достаточно открыть приложение с интернетом (иногда с перезапуском) — и оно обновится.
+// а без интернета (или если сервер недоступен) открываем сохранённую. Поэтому после загрузки новой
+// версии на хостинг достаточно открыть приложение с интернетом (иногда с перезапуском) — и оно обновится.
 //
 // VERSION менять нужно, только если вы удалили или переименовали файлы: старый кэш тогда очистится.
+// Новые файлы приложения обязательно добавляйте в APP_FILES, иначе без интернета они не откроются.
 
-const VERSION = 'v1';
+const VERSION = 'v3';
 const CACHE = `finance-app-${VERSION}`;
 
 const APP_FILES = [
@@ -20,25 +21,21 @@ const APP_FILES = [
   './storage.js',
   './defaults.js',
   './importer.js',
+  './stats.js',
+  './stats-view.js',
+  './charts.js',
+  './libs/dexie.min.js',
   './manifest.json',
   './icons/icon-192.png',
   './icons/icon-512.png',
   './icons/apple-touch-icon.png',
 ];
 
-// Библиотека Dexie с внешнего адреса. Версия зашита в адрес, поэтому файл не меняется.
-const DEXIE_URL = 'https://cdn.jsdelivr.net/npm/dexie@3.2.7/dist/dexie.min.js';
-
 self.addEventListener('install', (event) => {
   event.waitUntil((async () => {
     const cache = await caches.open(CACHE);
     // cache: 'reload' — не брать устаревшие копии из HTTP-кэша браузера
     await cache.addAll(APP_FILES.map((url) => new Request(url, { cache: 'reload' })));
-    try {
-      await cache.add(DEXIE_URL);
-    } catch {
-      // нет сети при установке: Dexie сохранится при первом обычном запуске
-    }
     await self.skipWaiting();
   })());
 });
@@ -55,39 +52,28 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const { request } = event;
   if (request.method !== 'GET') return;
-
-  if (request.url === DEXIE_URL) {
-    event.respondWith(cacheFirst(request));
-    return;
-  }
   if (new URL(request.url).origin !== self.location.origin) return; // чужие адреса не трогаем
-
   event.respondWith(networkFirst(request));
 });
 
-// Свои файлы: сначала сервер, при отсутствии сети — сохранённая копия
+// Сначала сервер; если его нет или он ответил ошибкой (например, 404) — сохранённая копия
 async function networkFirst(request) {
   const cache = await caches.open(CACHE);
   try {
     const response = await fetch(new Request(request.url, { cache: 'no-cache' }));
-    if (response.ok) cache.put(request, response.clone());
-    return response;
+    if (response.ok) {
+      cache.put(request, response.clone());
+      return response;
+    }
+    const saved = await cache.match(request, { ignoreSearch: true });
+    return saved ?? response;
   } catch {
-    const cached = await cache.match(request, { ignoreSearch: true });
-    if (cached) return cached;
+    const saved = await cache.match(request, { ignoreSearch: true });
+    if (saved) return saved;
     if (request.mode === 'navigate') {
       const page = await cache.match('./index.html');
       if (page) return page;
     }
     return Response.error();
   }
-}
-
-// Dexie: сначала сохранённая копия
-async function cacheFirst(request) {
-  const cache = await caches.open(CACHE);
-  const cached = await cache.match(request);
-  if (cached) return cached;
-  cache.add(DEXIE_URL).catch(() => {}); // сохранить на будущее (запрос с CORS, чтобы ответ можно было положить в кэш)
-  return fetch(request);
 }

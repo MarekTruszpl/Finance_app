@@ -6,6 +6,10 @@ import {
   getLastMileageForGroup, buildBackup, validateBackup, buildCsv, getBackupReminder, localDateOf,
 } from './logic.js';
 import { parseCsv, normalizeNumberText, parseDateText, prepareImport, describeImport } from './importer.js';
+import {
+  niceScale, percentChange, getPeriod, groupRanges, getMileageDriven, summarize,
+  cumulativeByDay, byCategory, buildStatsModel, shiftMonth,
+} from './stats.js';
 
 const results = [];
 const check = (name, condition) => results.push({ name, ok: Boolean(condition) });
@@ -186,15 +190,15 @@ check('csv-разбор: "" внутри кавычек', parseCsv('"он ска
 check('csv-разбор: BOM убирается', parseCsv('\uFEFFa,b')[0][0] === 'a');
 check('число из таблицы: "200 zł"', normalizeNumberText('200 zł') === '200');
 check('число из таблицы: "1 200,50 zł"', normalizeNumberText('1 200,50 zł') === '1200.50');
-check('число из таблицы: "245.000" (разряды)', normalizeNumberText('245.000') === '245000');
+check('число из таблицы: "123.000" (разряды)', normalizeNumberText('123.000') === '123000');
 check('число из таблицы: "1.234,56"', normalizeNumberText('1.234,56') === '1234.56');
 check('число из таблицы: "1,234.56"', normalizeNumberText('1,234.56') === '1234.56');
 check('число из таблицы: "0,500" — дробь', normalizeNumberText('0,500') === '0.500');
 check('число из таблицы: без цифр -> пусто', normalizeNumberText('abc') === '');
 check('число из таблицы: минус сохраняется', normalizeNumberText('-50 zł') === '-50');
-check('дата: 25.06.2025', parseDateText('25.06.2025') === '2025-06-25');
+check('дата: 14.03.2025', parseDateText('14.03.2025') === '2025-03-14');
 check('дата: 5.6.25', parseDateText('5.6.25') === '2025-06-05');
-check('дата: ГГГГ-ММ-ДД', parseDateText('2025-06-25') === '2025-06-25');
+check('дата: ГГГГ-ММ-ДД', parseDateText('2025-03-14') === '2025-03-14');
 check('дата: 31.02.2025 -> null', parseDateText('31.02.2025') === null);
 check('дата: текст -> null', parseDateText('abc') === null);
 
@@ -205,12 +209,12 @@ const importCats = [
 ];
 const importOpts = { section: 'car', categories: importCats, defaultCategoryId: 2, existingRecords: [] };
 const sheetCsv = [
-  ',,,"43 425 zł",',
+  ',,,"9 999 zł",',
   ',Data,,Koszt,Przebieg',
-  ',25.06.2025,Łączniki stabilizatora,200 zł,245 000',
-  ',25.06.2025,Gumki stabilizatora,100 zł,245 000',
-  ',10.07.2025,"Olej, filtr","1 250 zł","246 100"',
-  ',01.08.2025,Opony,"1 200,50 zł","247 000"',
+  ',14.03.2025,Wymiana filtra,200 zł,123 000',
+  ',14.03.2025,Wymiana uszczelki,100 zł,123 000',
+  ',10.04.2025,"Olej, filtr","1 250 zł","246 100"',
+  ',01.05.2025,Opony,"1 200,50 zł","247 000"',
   ',,,,',
   ',,Razem,,',
 ].join('\n');
@@ -219,22 +223,22 @@ check('импорт: таблица и колонки распознаны', imp
 check('импорт: 4 записи готовы, ошибок нет', imp.ready.length === 4 && imp.errors.length === 0 && imp.total === 4);
 check('импорт: итоговая строка пропущена', imp.skipped === 1);
 const firstImported = imp.ready[0];
-check('импорт: поля записи', firstImported.date === '2025-06-25' && firstImported.amount === 200 && firstImported.mileage === 245000
-  && firstImported.comment === 'Łączniki stabilizatora' && firstImported.category_id === 2 && firstImported.section === 'car'
+check('импорт: поля записи', firstImported.date === '2025-03-14' && firstImported.amount === 200 && firstImported.mileage === 123000
+  && firstImported.comment === 'Wymiana filtra' && firstImported.category_id === 2 && firstImported.section === 'car'
   && firstImported.currency === 'PLN' && firstImported.amount_base === 200);
 check('импорт: запятая внутри кавычек не ломает колонки', imp.ready.some((r) => r.comment === 'Olej, filtr' && r.amount === 1250));
 check('импорт: "1 200,50 zł" = 1200.5', imp.ready.some((r) => r.amount === 1200.5));
 const again = prepareImport(sheetCsv, { ...importOpts, existingRecords: imp.ready.map((r, i) => ({ ...r, id: i + 1 })) });
 check('импорт: повторный импорт — всё дубликаты', again.ready.length === 0 && again.duplicates === 4);
-const bad = prepareImport(sheetCsv + '\n,02.08.2025,Ошибка,50 zł,100\n,31.02.2025,Плохая дата,50 zł,300 000\n,03.08.2025,Без пробега,50 zł,', importOpts);
+const bad = prepareImport(sheetCsv + '\n,02.05.2025,Ошибка,50 zł,100\n,31.02.2025,Плохая дата,50 zł,300 000\n,03.05.2025,Без пробега,50 zł,', importOpts);
 check('импорт: хорошие записи остаются, 3 строки с ошибками', bad.ready.length === 4 && bad.errors.length === 3);
 check('импорт: ошибка пробега указывает строку', bad.errors.some((e) => e.startsWith('Строка 9') && e.includes('Пробег')));
 check('импорт: ошибка даты указывает строку', bad.errors.some((e) => e.startsWith('Строка 10') && e.includes('Дата')));
-const semi = prepareImport('Data;Opis;Koszt;Przebieg\n25.06.2025;Test;"200,50 zł";245000', importOpts);
+const semi = prepareImport('Data;Opis;Koszt;Przebieg\n14.03.2025;Test;"200,50 zł";123000', importOpts);
 check('импорт: разделитель ";" определяется сам', semi.ok && semi.ready.length === 1 && semi.ready[0].amount === 200.5 && semi.ready[0].comment === 'Test');
-const ru = prepareImport('Дата,Описание,Сумма,Пробег\n25.06.2025,Масло,150,245000', importOpts);
+const ru = prepareImport('Дата,Описание,Сумма,Пробег\n14.03.2025,Масло,150,123000', importOpts);
 check('импорт: русские заголовки', ru.ok && ru.ready.length === 1 && ru.ready[0].comment === 'Масло');
-const withCat = prepareImport('Data,Kategoria,Koszt,Przebieg\n25.06.2025,Шины и диски,400,245000\n26.06.2025,Неизвестная,10,245001\n27.06.2025,Топливо,20,245002', importOpts);
+const withCat = prepareImport('Data,Kategoria,Koszt,Przebieg\n14.03.2025,Шины и диски,400,123000\n15.03.2025,Неизвестная,10,123001\n16.03.2025,Топливо,20,123002', importOpts);
 check('импорт: категория из файла по названию', withCat.ready[0].category_id === 3);
 check('импорт: неизвестная категория и топливо -> по умолчанию', withCat.ready[1].category_id === 2 && withCat.ready[2].category_id === 2);
 check('импорт: нет заголовков -> ошибка', prepareImport('a,b\n1,2', importOpts).ok === false);
@@ -252,6 +256,87 @@ const byDays = getBackupReminder({ recordCount: 30, changes: 1, lastBackupIso: s
 check('напоминание: давно не делали и есть изменения', byDays.reason === 'days' && byDays.days === 21);
 check('напоминание: давно, но изменений нет -> нет', getBackupReminder({ recordCount: 30, changes: 0, lastBackupIso: staleIso, now: remindNow }) === null);
 check('localDateOf: местная дата метки времени', localDateOf(new Date(2026, 9, 31, 23, 30).toISOString()) === '2026-10-31');
+
+// Статистика
+check('niceScale: 870 -> 1000 с шагом 250', niceScale(870).max === 1000 && niceScale(870).step === 250);
+check('niceScale: 1234 -> 1500', niceScale(1234).max === 1500);
+check('niceScale: ноль не ломается', niceScale(0).max > 0);
+check('percentChange: 500 к 800 = -37,5', percentChange(500, 800) === -37.5);
+check('percentChange: раньше было 0 -> null', percentChange(5, 0) === null);
+
+const pm = getPeriod('month', '2026-10-15');
+check('период "месяц": с 1 по 15 число', pm.from === '2026-10-01' && pm.to === '2026-10-15');
+check('сравнение: с 1 по 15 число прошлого месяца', pm.compare.from === '2026-09-01' && pm.compare.to === '2026-09-15');
+check('сравнение 31 марта -> до 28 февраля', getPeriod('month', '2026-03-31').compare.to === '2026-02-28');
+check('сравнение в январе -> декабрь прошлого года', getPeriod('month', '2026-01-15').compare.from === '2025-12-01' && getPeriod('month', '2026-01-15').compare.to === '2025-12-15');
+const py = getPeriod('year', '2026-10-15');
+check('период "год": с 1 января по сегодня, сравнение с тем же отрезком прошлого года',
+  py.from === '2026-01-01' && py.to === '2026-10-15' && py.compare.from === '2025-01-01' && py.compare.to === '2025-10-15');
+check('год: 29 февраля сравнивается с 28 февраля', getPeriod('year', '2028-02-29').compare.to === '2027-02-28');
+const pl = getPeriod('lastYear', '2026-10-15');
+check('период "прошлый год"', pl.from === '2025-01-01' && pl.to === '2025-12-31' && pl.compare === null);
+check('всё время: до 24 месяцев — по месяцам', getPeriod('all', '2026-10-15', { firstDate: '2025-03-14' }).grouping === 'month');
+check('всё время: больше 2 лет — по годам', getPeriod('all', '2026-10-15', { firstDate: '2023-01-01' }).grouping === 'year');
+check('группы по годам: 2023–2026 = 4', groupRanges('year', '2023-01-01', '2026-10-15').length === 4);
+const gm = groupRanges('month', '2026-09-05', '2026-10-15');
+check('группы по месяцам: границы обрезаются по периоду', gm.length === 2 && gm[0].from === '2026-09-05' && gm[0].to === '2026-09-30' && gm[1].to === '2026-10-15');
+check('группы по месяцам: подписи', gm[0].label === 'сен' && gm[1].label === 'окт');
+check('группы за прошлый год: 12 месяцев', groupRanges('month', '2025-01-01', '2025-12-31').length === 12);
+
+const sCats = [{ id: 1, name: 'Топливо', kind: 'fuel' }, { id: 2, name: 'Ремонт', kind: 'regular' }];
+const sRecs = [
+  { id: 1, date: '2026-09-05', category_id: 1, mileage: 100000, amount: 300 },
+  { id: 2, date: '2026-09-12', category_id: 2, mileage: 100300, amount: 500 },
+  { id: 3, date: '2026-09-28', category_id: 1, mileage: 100900, amount: 250 },
+  { id: 4, date: '2026-10-03', category_id: 1, mileage: 101200, amount: 320 },
+  { id: 5, date: '2026-10-10', category_id: 2, mileage: 101500, amount: 180 },
+];
+const sKind = { 1: 'fuel', 2: 'regular' };
+check('пробег за период: от последней записи до периода', getMileageDriven(sRecs, '2026-10-01', '2026-10-15') === 600);
+check('пробег за период: первая запись — точка отсчёта', getMileageDriven(sRecs, '2026-09-01', '2026-09-15') === 300);
+check('пробег за весь период', getMileageDriven(sRecs, '2000-01-01', '2026-12-31') === 1500);
+check('пробег за пустой период = 0', getMileageDriven(sRecs, '2026-11-01', '2026-11-30') === 0);
+const sOct = summarize(sRecs, sKind, { from: '2026-10-01', to: '2026-10-15' });
+check('итоги месяца: топливо, остальное, всего', sOct.fuel === 320 && sOct.other === 180 && sOct.total === 500 && sOct.count === 2);
+check('итоги месяца: стоимость 1000 км без топлива (180 zł на 600 км = 300)', Math.abs(sOct.costPer1000 - 300) < 1e-9);
+check('итоги: без пробега стоимость 1000 км не считается', summarize([], sKind, { from: '2026-10-01', to: '2026-10-31' }).costPer1000 === null);
+check('итоги: сумма берётся в злотых (amount_base)', summarize([{ id: 9, date: '2026-10-01', category_id: 2, mileage: 1, amount: 100, amount_base: 390 }], sKind, { from: '2026-10-01', to: '2026-10-31' }).other === 390);
+const cum = cumulativeByDay(sRecs, 2026, 10, 15);
+check('нарастающим итогом: октябрь', cum.length === 15 && cum[2] === 320 && cum[9] === 500 && cum[14] === 500);
+const cumPrev = cumulativeByDay(sRecs, 2026, 9, 30);
+check('нарастающим итогом: сентябрь', cumPrev.length === 30 && cumPrev[4] === 300 && cumPrev[11] === 800 && cumPrev[29] === 1050);
+const statCats = byCategory(sRecs, sCats, { from: '2026-10-01', to: '2026-10-15' });
+check('по категориям: сортировка и доли', statCats.length === 2 && statCats[0].name === 'Топливо' && Math.round(statCats[0].share) === 64 && Math.round(statCats[1].share) === 36);
+
+const mMonth = buildStatsModel({ kind: 'month', records: sRecs, categories: sCats, today: '2026-10-15' });
+check('модель "месяц": текущий и прошлый', mMonth.current.total === 500 && mMonth.previous.total === 800 && mMonth.previous.mileage === 300);
+check('модель "месяц": график нарастающим итогом', mMonth.chart.type === 'cumulative' && mMonth.chart.current.length === 15 && mMonth.chart.previous.length === 30);
+check('модель "месяц": подписи периода', mMonth.rangeText === '1–15 октября 2026' && mMonth.compareText === 'Сравнение: 1–15 сентября 2026');
+const mYear = buildStatsModel({ kind: 'year', records: sRecs, categories: sCats, today: '2026-10-15' });
+check('модель "год": 10 месяцев, сентябрь и октябрь', mYear.groups.length === 10 && mYear.groups[8].total === 1050 && mYear.groups[8].mileage === 900 && mYear.groups[9].total === 500 && mYear.groups[9].mileage === 600);
+check('модель "год": пробег за год', mYear.current.mileage === 1500 && mYear.chart.type === 'bars');
+const mLast = buildStatsModel({ kind: 'lastYear', records: sRecs, categories: sCats, today: '2026-10-15' });
+check('модель "прошлый год": 12 месяцев, данных нет', mLast.groups.length === 12 && mLast.isEmpty === true);
+const mAll = buildStatsModel({ kind: 'all', records: sRecs, categories: sCats, today: '2026-10-15' });
+check('модель "всё время": по месяцам, 2 столбика', mAll.grouping === 'month' && mAll.chart.labels.join() === 'сен,окт' && mAll.current.total === 1550);
+check('модель "всё время" без записей', buildStatsModel({ kind: 'all', records: [], categories: sCats, today: '2026-10-15' }).isEmpty === true);
+
+// Выбор месяца
+const pSep = getPeriod('month', '2026-10-15', { month: '2026-09' });
+check('выбор месяца: прошедший месяц целиком', pSep.from === '2026-09-01' && pSep.to === '2026-09-30' && pSep.title === 'Сентябрь 2026');
+check('выбор месяца: сравнение с предыдущим целиком', pSep.compare.from === '2026-08-01' && pSep.compare.to === '2026-08-31');
+check('выбор месяца: текущий месяц как и раньше', getPeriod('month', '2026-10-15', { month: '2026-10' }).to === '2026-10-15');
+check('выбор месяца: будущий месяц заменяется текущим', getPeriod('month', '2026-10-15', { month: '2027-03' }).from === '2026-10-01');
+check('выбор месяца: январь сравнивается с декабрём', getPeriod('month', '2026-10-15', { month: '2026-01' }).compare.from === '2025-12-01' && getPeriod('month', '2026-10-15', { month: '2026-01' }).compare.to === '2025-12-31');
+check('выбор месяца: мусор вместо месяца игнорируется', getPeriod('month', '2026-10-15', { month: 'abc' }).from === '2026-10-01');
+check('shiftMonth: назад через границу года', shiftMonth('2026-01', -1) === '2025-12');
+check('shiftMonth: вперёд через границу года', shiftMonth('2026-12', 1) === '2027-01');
+const mSep = buildStatsModel({ kind: 'month', month: '2026-09', records: sRecs, categories: sCats, today: '2026-10-15' });
+check('сентябрь: итоги и пробег', mSep.current.total === 1050 && mSep.current.mileage === 900 && mSep.previous.count === 0);
+check('сентябрь: график на весь месяц и август', mSep.chart.current.length === 30 && mSep.chart.previous.length === 31);
+check('сентябрь: стрелки — назад нельзя (первая запись), вперёд можно', mSep.monthNav.canPrev === false && mSep.monthNav.canNext === true && mSep.monthNav.nextMonth === '2026-10');
+check('октябрь: стрелки — назад можно, вперёд нельзя', mMonth.monthNav.canPrev === true && mMonth.monthNav.canNext === false && mMonth.monthNav.prevMonth === '2026-09');
+check('стрелок нет вне режима "месяц"', mYear.monthNav === null);
 
 // Вывод
 const failed = results.filter((r) => !r.ok);

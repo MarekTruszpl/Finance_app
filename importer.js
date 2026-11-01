@@ -56,7 +56,7 @@ export function parseCsv(text, delimiter = ',') {
 
 // ---------- Числа и даты "как в таблице" ----------
 
-// "200 zł" -> "200", "1 200,50 zł" -> "1200.50", "245 000" -> "245000", "245.000" -> "245000".
+// "200 zł" -> "200", "1 200,50 zł" -> "1200.50", "123 000" -> "123000", "123.000" -> "123000".
 // Возвращает строку, которую дальше проверит validateRecord (пустую, если цифр нет).
 export function normalizeNumberText(raw) {
   let s = String(raw ?? '').replace(/[\s\u00A0\u202F]/g, '').replace(/[^\d.,-]/g, '');
@@ -74,7 +74,7 @@ export function normalizeNumberText(raw) {
   } else if (lastComma !== -1 || lastDot !== -1) {
     const sep = lastComma !== -1 ? ',' : '.';
     const parts = s.split(sep);
-    // "245.000" или "1,234,567" — это разряды; "200,50" или "0,500" — дробь
+    // "123.000" или "1,234,567" — это разряды; "200,50" или "0,500" — дробь
     const isThousands = parts.length > 2 || (parts[1].length === 3 && parts[0].length >= 1 && parts[0].length <= 3 && parts[0] !== '0');
     s = isThousands ? parts.join('') : `${parts[0]}.${parts[1]}`;
   }
@@ -82,7 +82,7 @@ export function normalizeNumberText(raw) {
   return (negative ? '-' : '') + s;
 }
 
-// "25.06.2025", "5.6.25", "25/06/2025", "2025-06-25" -> "2025-06-25"; не дата -> null
+// "14.03.2025", "5.6.25", "25/06/2025", "2025-03-14" -> "2025-03-14"; не дата -> null
 export function parseDateText(raw) {
   const s = String(raw ?? '').trim();
   let y;

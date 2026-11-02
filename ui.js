@@ -2,6 +2,7 @@
 // только показать данные и считать то, что ввёл пользователь.
 import { BASE_CURRENCY, CURRENCIES } from './defaults.js';
 import { formatNumberInput } from './logic.js';
+import { ACTION_WIDTH, clampOffset, decideSwipe, gestureAxis } from './swipe.js';
 
 const $ = (id) => document.getElementById(id);
 // Порядок = порядок полей на экране (курсор встанет на первое неверное)
@@ -232,11 +233,134 @@ export function onSubmit(callback) {
 }
 
 // ---------- Список и статистика ----------
-// opts.selectedId — какая запись сейчас редактируется (подсвечивается)
-// opts.onSelect   — что делать при нажатии на строку
-export function renderRecords(records, nameById, { selectedId = null, onSelect = null } = {}) {
+// ---------- Список записей: изменить и удалить свайпом ----------
+// Свайп вправо — "Изменить", свайп влево — "Удалить". Если провести палец до конца,
+// действие выполняется сразу; если чуть меньше — строка раскрывается и показывает кнопку.
+
+let openSwipeRow = null; // { li, reset } — строка, у которой сейчас раскрыта кнопка
+let swipeCloserAttached = false;
+
+function closeOpenRow() {
+  if (!openSwipeRow) return;
+  const row = openSwipeRow;
+  openSwipeRow = null;
+  row.reset();
+}
+
+// Нажатие в любом другом месте закрывает раскрытую строку (подключаем один раз)
+function ensureSwipeCloser() {
+  if (swipeCloserAttached || typeof document.addEventListener !== 'function') return;
+  swipeCloserAttached = true;
+  document.addEventListener('pointerdown', (event) => {
+    if (openSwipeRow && !openSwipeRow.li.contains(event.target)) closeOpenRow();
+  });
+}
+
+function actionButton(className, text) {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = className;
+  button.textContent = text;
+  return button;
+}
+
+function attachSwipe(li, content, editButton, deleteButton, { onEdit, onDelete }) {
+  let startX = 0;
+  let startY = 0;
+  let axis = null;       // 'x' — идёт свайп, 'y' — пользователь прокручивает список
+  let offset = 0;        // где строка сейчас
+  let restOffset = 0;    // где строка "стоит": 0 или ширина кнопки
+  let tracking = false;
+  let swipedAt = 0;
+
+  const moveTo = (value, animate) => {
+    content.style.transition = animate ? 'transform 0.2s ease' : 'none';
+    content.style.transform = `translateX(${value}px)`;
+  };
+  const rest = (value) => {
+    restOffset = value;
+    offset = value;
+    moveTo(value, true);
+    openSwipeRow = value === 0 ? null : { li, reset: () => rest(0) };
+  };
+  const reveal = (value) => {
+    if (openSwipeRow && openSwipeRow.li !== li) closeOpenRow();
+    rest(value);
+  };
+
+  content.addEventListener('pointerdown', (event) => {
+    if (event.pointerType === 'mouse' && event.button !== 0) return;
+    if (openSwipeRow && openSwipeRow.li !== li) closeOpenRow();
+    tracking = true;
+    axis = null;
+    startX = event.clientX;
+    startY = event.clientY;
+  });
+
+  content.addEventListener('pointermove', (event) => {
+    if (!tracking) return;
+    const dx = event.clientX - startX;
+    const dy = event.clientY - startY;
+    if (axis === null) {
+      axis = gestureAxis(dx, dy);
+      if (axis === 'x' && content.setPointerCapture) content.setPointerCapture(event.pointerId);
+    }
+    if (axis !== 'x') return;
+    offset = clampOffset(restOffset + dx);
+    moveTo(offset, false);
+  });
+
+  const finish = () => {
+    if (!tracking) return;
+    tracking = false;
+    if (axis !== 'x') return;
+    axis = null;
+    swipedAt = Date.now();
+    const { action, rest: target } = decideSwipe(offset);
+    rest(target);
+    if (action === 'edit') onEdit();
+    else if (action === 'delete') onDelete();
+  };
+  content.addEventListener('pointerup', finish);
+  content.addEventListener('pointercancel', () => {
+    if (tracking && axis === 'x') rest(restOffset);
+    tracking = false;
+    axis = null;
+  });
+
+  // Нажатие на раскрытую строку закрывает её (а нажатие на обычную ничего не делает)
+  content.addEventListener('click', () => {
+    if (Date.now() - swipedAt < 350) return; // это конец свайпа, а не нажатие
+    if (restOffset !== 0) rest(0);
+  });
+
+  editButton.addEventListener('click', () => { rest(0); onEdit(); });
+  deleteButton.addEventListener('click', () => { rest(0); onDelete(); });
+  // Для клавиатуры: кнопка получает фокус — строка раскрывается, чтобы её было видно
+  editButton.addEventListener('focus', () => reveal(ACTION_WIDTH));
+  deleteButton.addEventListener('focus', () => reveal(-ACTION_WIDTH));
+
+  li.tabIndex = 0;
+  li.addEventListener('keydown', (event) => {
+    if (event.target !== li) return; // клавиши внутри кнопок не перехватываем
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      onEdit();
+    } else if (event.key === 'Delete' || event.key === 'Backspace') {
+      event.preventDefault();
+      onDelete();
+    }
+  });
+}
+
+// opts.selectedId       — какая запись сейчас редактируется (подсвечивается)
+// opts.onEdit(запись)   — свайп вправо или кнопка "Изменить"
+// opts.onDelete(запись) — свайп влево или кнопка "Удалить"
+export function renderRecords(records, nameById, { selectedId = null, onEdit = null, onDelete = null } = {}) {
   const list = $('records');
   list.replaceChildren();
+  openSwipeRow = null;
+  ensureSwipeCloser();
 
   if (records.length === 0) {
     const li = document.createElement('li');
@@ -248,6 +372,8 @@ export function renderRecords(records, nameById, { selectedId = null, onSelect =
 
   for (const r of records) {
     const li = document.createElement('li');
+    li.className = 'swipe-row';
+    li.title = 'Свайп вправо: изменить, влево: удалить';
 
     const left = document.createElement('div');
     const title = document.createElement('div');
@@ -275,19 +401,19 @@ export function renderRecords(records, nameById, { selectedId = null, onSelect =
     details.textContent = parts.join(' · ');
     right.append(amount, details);
 
-    li.append(left, right);
+    // Слой с содержимым двигается, кнопки действий лежат под ним
+    const content = document.createElement('div');
+    content.className = 'swipe-content';
+    content.append(left, right);
 
-    if (onSelect) {
-      li.tabIndex = 0;
-      li.setAttribute('role', 'button');
-      li.addEventListener('click', () => onSelect(r));
-      li.addEventListener('keydown', (event) => {
-        if (event.key === 'Enter' || event.key === ' ') {
-          event.preventDefault();
-          onSelect(r);
-        }
-      });
-    }
+    const editButton = actionButton('swipe-action swipe-edit', 'Изменить');
+    const deleteButton = actionButton('swipe-action swipe-delete', 'Удалить');
+    li.append(editButton, deleteButton, content);
+    attachSwipe(li, content, editButton, deleteButton, {
+      onEdit: () => onEdit && onEdit(r),
+      onDelete: () => onDelete && onDelete(r),
+    });
+
     if (r.id === selectedId) li.setAttribute('aria-current', 'true');
     list.append(li);
   }

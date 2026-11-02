@@ -27,57 +27,81 @@ function box(className, text) {
   return node;
 }
 
-// Подпись сравнения: "Сентябрь 2026: 2 130 zł · +15%"
-function compareLine(title, prevText, cur, prev) {
+// Сравнение с прошлым периодом: { change: "▲ +15%", trend: 'up' | 'down' | 'flat' }
+function compareParts(cur, prev) {
   const pct = percentChange(cur, prev);
   const diff = cur - prev;
-  const sign = diff > 0 ? '+' : diff < 0 ? '−' : '';
-  let change;
-  if (pct !== null) change = `${sign}${num(Math.abs(Math.round(pct)))}%`;
-  else change = cur > 0 ? 'раньше не было' : 'без изменений';
-  return { text: `${title}: ${prevText} · ${change}`, trend: diff > 0 ? 'up' : diff < 0 ? 'down' : 'flat' };
+  const trend = diff > 0 ? 'up' : diff < 0 ? 'down' : 'flat';
+  if (pct === null) return { change: cur > 0 ? 'раньше не было' : 'без изменений', trend };
+  const shown = pct !== 0 && Math.abs(pct) < 1 ? num(Math.abs(pct), 1) : num(Math.abs(Math.round(pct)));
+  const arrow = diff > 0 ? '▲ +' : diff < 0 ? '▼ −' : '';
+  return { change: diff === 0 ? 'без изменений' : `${arrow}${shown}%`, trend };
 }
 
-function summaryRow({ label, note, value, sub, trend, kind }) {
-  const row = document.createElement('div');
-  row.className = 'row stat-row';
-  const name = box('stat-name');
-  const title = document.createElement('span');
-  title.className = 'row-label';
-  title.textContent = label;
-  name.append(title);
-  if (note) name.append(box('stat-note', note)); // пояснение мелким шрифтом под названием
-  const values = box('stat-values');
-  values.append(box('stat-value', value));
-  if (sub) {
-    const line = box('stat-sub', sub);
-    line.dataset.trend = trend;
-    line.dataset.kind = kind;
-    values.append(line);
+// Переключатель "100 км | 1000 км"
+function unitSwitch(current, onChange) {
+  const wrap = box('unit-switch');
+  wrap.setAttribute('role', 'group');
+  wrap.setAttribute('aria-label', 'На сколько километров считать стоимость');
+  for (const unit of [100, 1000]) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'unit-btn';
+    button.textContent = `${unit} км`;
+    button.setAttribute('aria-pressed', String(unit === current));
+    button.addEventListener('click', () => onChange(unit));
+    wrap.append(button);
   }
-  row.append(name, values);
-  return row;
+  return wrap;
 }
 
-function renderSummary(model) {
+// Одна плитка: название, значение и сравнение с прошлым периодом
+function tile(def, model, { wide, costUnit, onCostUnitChange }) {
+  const el = box(`tile${wide ? ' tile-wide' : ''}${def.tone ? ` tile-${def.tone}` : ''}`);
+
+  const main = box('tile-main');
+  main.append(box('tile-label', def.label));
+  if (def.unitSwitch) main.append(unitSwitch(costUnit, onCostUnitChange));
+
+  const side = box('tile-side');
+  side.append(box('tile-value', def.cur == null ? '—' : def.fmt(def.cur)));
+  if (model.previous && def.cur != null && def.prev != null) {
+    const { change, trend } = compareParts(def.cur, def.prev);
+    const delta = box('tile-delta', change);
+    delta.dataset.trend = trend;
+    delta.dataset.kind = def.kind;
+    side.append(delta, box('tile-prev', `${model.compareTitle}: ${def.fmt(def.prev)}`));
+  }
+  el.append(main, side);
+  return el;
+}
+
+// Плитки по две в ряд; если их нечётное число, последняя занимает всю ширину (и ниже по высоте)
+function renderSummary(model, { costUnit, onCostUnitChange }) {
   const { current: cur, previous: prev } = model;
+  const per = (v) => (v == null ? null : costUnit === 100 ? v / 10 : v); // стоимость 1000 км -> на 100 км
   const defs = [
-    { label: 'Всего', cur: cur.total, prev: prev?.total, fmt: (v) => money(v), kind: 'expense' },
-    { label: 'Топливо', cur: cur.fuel, prev: prev?.fuel, fmt: (v) => money(v), kind: 'expense' },
-    { label: 'Сервис и прочее', cur: cur.other, prev: prev?.other, fmt: (v) => money(v), kind: 'expense' },
-    { label: 'Пробег', cur: cur.mileage, prev: prev?.mileage, fmt: (v) => `${num(v)} км`, kind: 'distance' },
-    { label: 'Стоимость 1000 км', note: 'без топлива', cur: cur.costPer1000, prev: prev?.costPer1000, fmt: (v) => money(v), kind: 'expense' },
+    { label: 'Всего', tone: 'total', cur: cur.total, prev: prev?.total, fmt: (v) => money(v), kind: 'expense' },
+    { label: 'Топливо', tone: 'fuel', cur: cur.fuel, prev: prev?.fuel, fmt: (v) => money(v), kind: 'expense' },
+    { label: 'Сервис и прочее', tone: 'other', cur: cur.other, prev: prev?.other, fmt: (v) => money(v), kind: 'expense' },
+    { label: 'Пробег', tone: 'mileage', cur: cur.mileage, prev: prev?.mileage, fmt: (v) => `${num(v)} км`, kind: 'distance' },
+    {
+      label: 'Стоимость без топлива',
+      tone: 'cost',
+      cur: per(cur.costPer1000),
+      prev: per(prev?.costPer1000),
+      fmt: (v) => money(v, costUnit === 100 ? 2 : 0),
+      kind: 'expense',
+      unitSwitch: true,
+    },
   ];
+  const lastIsAlone = defs.length % 2 === 1;
   $('stats-summary').replaceChildren(
-    ...defs.map((d) => {
-      const value = d.cur == null ? '—' : d.fmt(d.cur);
-      let sub = null;
-      let trend = 'flat';
-      if (model.previous && d.cur != null && d.prev != null) {
-        ({ text: sub, trend } = compareLine(model.compareTitle, d.fmt(d.prev), d.cur, d.prev));
-      }
-      return summaryRow({ label: d.label, note: d.note, value, sub, trend, kind: d.kind });
-    }),
+    ...defs.map((def, i) => tile(def, model, {
+      wide: lastIsAlone && i === defs.length - 1,
+      costUnit,
+      onCostUnitChange,
+    })),
   );
 }
 
@@ -204,7 +228,8 @@ function renderGroups(model) {
   }
 }
 
-export function renderStatsView(model) {
+// opts.costUnit — 100 или 1000 (для плитки стоимости); opts.onCostUnitChange(unit) — смена переключателя
+export function renderStatsView(model, { costUnit = 1000, onCostUnitChange = () => {} } = {}) {
   const nav = model.monthNav;
   $('month-nav').hidden = !nav;
   if (nav) {
@@ -213,7 +238,7 @@ export function renderStatsView(model) {
     $('month-next').disabled = !nav.canNext;
   }
   $('stats-range').textContent = model.compareText ? `${model.rangeText} · ${model.compareText}` : model.rangeText;
-  renderSummary(model);
+  renderSummary(model, { costUnit, onCostUnitChange });
   $('stats-empty').hidden = !model.isEmpty;
   $('stats-details').hidden = model.isEmpty;
   if (model.isEmpty) return;

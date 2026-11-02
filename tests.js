@@ -10,6 +10,7 @@ import {
   niceScale, percentChange, getPeriod, groupRanges, getMileageDriven, summarize,
   cumulativeByDay, byCategory, buildStatsModel, shiftMonth, getHistoryOptions, buildHistory,
 } from './stats.js';
+import { decideSwipe, clampOffset, gestureAxis, ACTION_WIDTH, OPEN_THRESHOLD, FULL_THRESHOLD } from './swipe.js';
 
 const results = [];
 const check = (name, condition) => results.push({ name, ok: Boolean(condition) });
@@ -366,6 +367,17 @@ check('журнал "все": сумма и количество', hAll.count ==
 const hRepair = buildHistory({ records: hRecs, categories: hCats, selection: '2' });
 check('журнал по категории: только она, свежие сверху', hRepair.items.map((i) => i.id).join() === '1,3' && hRepair.showCategory === false && hRepair.total === 350);
 check('журнал: категорию топливо выбрать нельзя', buildHistory({ records: hRecs, categories: hCats, selection: '1' }).count === 0);
+
+// Свайп
+check('свайп: направление — горизонтальное', gestureAxis(30, 5) === 'x');
+check('свайп: направление — прокрутка', gestureAxis(4, 30) === 'y');
+check('свайп: рано судить о направлении', gestureAxis(3, 2) === null);
+check('свайп: небольшой сдвиг возвращается назад', decideSwipe(30).rest === 0 && decideSwipe(-30).rest === 0 && decideSwipe(30).action === null);
+check('свайп вправо: строка раскрывается под кнопку "Изменить"', decideSwipe(OPEN_THRESHOLD).rest === ACTION_WIDTH && decideSwipe(100).action === null);
+check('свайп влево: строка раскрывается под кнопку "Удалить"', decideSwipe(-OPEN_THRESHOLD).rest === -ACTION_WIDTH && decideSwipe(-100).action === null);
+check('свайп вправо до конца: сразу "изменить"', decideSwipe(FULL_THRESHOLD).action === 'edit' && decideSwipe(FULL_THRESHOLD).rest === 0);
+check('свайп влево до конца: сразу "удалить"', decideSwipe(-FULL_THRESHOLD).action === 'delete' && decideSwipe(-FULL_THRESHOLD).rest === 0);
+check('свайп: строку нельзя утянуть слишком далеко', clampOffset(999) < 200 && clampOffset(-999) > -200 && clampOffset(40) === 40);
 
 // Вывод
 const failed = results.filter((r) => !r.ok);

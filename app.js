@@ -6,6 +6,7 @@ import {
   getAllCategories, replaceAllData, getLastBackupAt, setLastBackupAt, addRecords, clearRecords,
   saveSnapshot, getSnapshots, requestPersistentStorage, getChangesSinceBackup, bumpChanges, resetChanges,
   getSnoozeUntil, setSnoozeUntil, getLastDailySnapshotDay, setLastDailySnapshotDay,
+  getCostUnit, setCostUnit,
 } from './storage.js';
 import {
   today, parseNumber, validateRecord, validateCategory, getVisibleCategories,
@@ -35,6 +36,7 @@ let persisted = null;     // включено ли постоянное хран
 let snapshotsOpen = false; // открыт ли список автокопий
 let statsMonth = null;    // выбранный на вкладке "Статистика" месяц ('2026-09'); null — текущий
 let statsModel = null;    // последние показанные данные статистики (там же доступные соседние месяцы)
+let costUnit = getCostUnit(); // стоимость без топлива показываем на 100 или на 1000 км
 
 const findCategory = (id) => categories.find((c) => c.id === id);
 const fmt = (n) => n.toLocaleString('ru-RU');
@@ -121,7 +123,8 @@ function renderList() {
   const nameById = Object.fromEntries(categories.map((c) => [c.id, c.name]));
   ui.renderRecords(records.slice(0, visibleCount), nameById, {
     selectedId: editingId,
-    onSelect: handleSelect,
+    onEdit: handleSelect,          // свайп вправо
+    onDelete: handleDeleteRecord,  // свайп влево
   });
   ui.setShowMore(records.length > visibleCount);
 }
@@ -196,21 +199,32 @@ async function handleSave() {
   }
 }
 
-async function handleDelete() {
-  if (editingId === null) return;
-  if (!ui.confirmAction('Удалить эту запись? Это действие нельзя отменить.')) return;
+// Удаление записи: из формы редактирования или свайпом влево в списке
+async function deleteRecordById(id, description) {
+  const question = `Удалить запись${description ? ` ${description}` : ''}? Это действие нельзя отменить.`;
+  if (!ui.confirmAction(question)) return;
 
   try {
     await ensureDailySnapshot();
-    await deleteRecord(editingId);
+    await deleteRecord(id);
     noteChange();
-    exitEditMode();
+    if (editingId === id) exitEditMode(); // удалили ту, что была открыта в форме
     await reload();
     ui.showToast('Запись удалена');
   } catch (err) {
     console.error(err);
     ui.showToast('Не удалось удалить. Подробности в консоли.');
   }
+}
+
+// Кнопка "Удалить запись" в форме редактирования
+function handleDelete() {
+  if (editingId !== null) deleteRecordById(editingId);
+}
+
+// Свайп влево по записи в списке
+function handleDeleteRecord(record) {
+  deleteRecordById(record.id, `от ${record.date.split('-').reverse().join('.')} (${fmt(record.amount)})`);
 }
 
 // Выбрали другую валюту: подставляем её последний курс (его можно изменить)
@@ -576,7 +590,14 @@ async function handleSnapshotRestore(snapshot) {
 
 function refreshStats() {
   statsModel = buildStatsModel({ kind: readStatsPeriod(), month: statsMonth, records, categories, today: today() });
-  renderStatsView(statsModel);
+  renderStatsView(statsModel, { costUnit, onCostUnitChange: handleCostUnitChange });
+}
+
+// Переключатель "100 км / 1000 км" в плитке стоимости
+function handleCostUnitChange(unit) {
+  costUnit = unit;
+  setCostUnit(unit);
+  refreshStats();
 }
 
 // Сменили период: возвращаемся к текущему месяцу

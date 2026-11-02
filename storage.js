@@ -201,3 +201,12 @@ export function getLastDailySnapshotDay() {
 export function setLastDailySnapshotDay(day) {
   writeMeta(DAILY_KEY, day);
 }
+
+// На сколько километров показывать стоимость в статистике: 100 или 1000
+const COST_UNIT_KEY = 'finance_cost_unit';
+export function getCostUnit() {
+  return readMeta(COST_UNIT_KEY) === '100' ? 100 : 1000;
+}
+export function setCostUnit(unit) {
+  writeMeta(COST_UNIT_KEY, String(unit));
+}

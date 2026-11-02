@@ -500,3 +500,95 @@ body::before {
 .info-title { margin-bottom: 4px; font-weight: 600; }
 .info-row { display: flex; justify-content: space-between; gap: 12px; }
 .info-strong { font-weight: 600; }
+
+/* ---------- Свайп по записям: вправо — изменить, влево — удалить ---------- */
+:root { --action-edit: #0b63d1; --action-delete: #d70015; }
+
+.records li.swipe-row { display: block; position: relative; padding: 0; overflow: hidden; background-image: none; }
+.swipe-content {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 16px;
+  background-color: var(--cell);
+  touch-action: pan-y;          /* вертикальная прокрутка остаётся за браузером, горизонтальный жест — за нами */
+  -webkit-user-select: none;
+  user-select: none;
+}
+.swipe-row + .swipe-row .swipe-content {
+  background-image: linear-gradient(var(--sep), var(--sep));
+  background-size: calc(100% - 16px) 0.5px;
+  background-position: right top;
+  background-repeat: no-repeat;
+}
+.swipe-row[aria-current="true"] .swipe-content { background-color: color-mix(in srgb, var(--tint) 12%, var(--cell)); }
+.swipe-action {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 96px;
+  padding: 0;
+  font: inherit;
+  font-weight: 600;
+  color: #fff;
+  border: 0;
+  cursor: pointer;
+}
+.swipe-edit { left: 0; background: var(--action-edit); }
+.swipe-delete { right: 0; background: var(--action-delete); }
+.swipe-row:focus-visible { outline: 2px solid var(--tint); outline-offset: -2px; }
+
+/* ---------- Плитки статистики: по две в ряд, нечётная последняя — на всю ширину ---------- */
+.tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 20px; }
+.tile {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 6px;
+  min-width: 0;
+  min-height: 104px;
+  padding: 12px 14px;
+  background: var(--cell);
+  border-radius: 14px;
+}
+.tile-wide {
+  grid-column: 1 / -1;
+  flex-direction: row;
+  align-items: center;
+  min-height: 0;               /* ниже обычных плиток */
+  gap: 12px;
+}
+.tile-wide .tile-side { text-align: right; }
+.tile-label { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--secondary); }
+.tile-fuel .tile-label::before, .tile-other .tile-label::before, .tile-mileage .tile-label::before {
+  content: "";
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+.tile-fuel .tile-label::before { background: var(--c-fuel); }
+.tile-other .tile-label::before { background: var(--c-other); }
+.tile-mileage .tile-label::before { background: var(--c-mileage); }
+.tile-value { font-size: 22px; font-weight: 700; line-height: 1.2; overflow-wrap: anywhere; }
+.tile-delta { font-size: 13px; font-weight: 600; color: var(--secondary); }
+.tile-delta[data-kind="expense"][data-trend="up"] { color: var(--red); }
+.tile-delta[data-kind="expense"][data-trend="down"] { color: var(--plus); }
+.tile-prev { font-size: 12px; color: var(--secondary); }
+
+.unit-switch { display: inline-flex; width: fit-content; margin-top: 6px; padding: 2px; background: var(--fill); border-radius: 8px; }
+.unit-btn {
+  min-height: 32px;
+  padding: 4px 12px;
+  font: inherit;
+  font-size: 13px;
+  color: var(--label);
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.unit-btn[aria-pressed="true"] { font-weight: 600; background: var(--thumb); box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12); }
+.unit-btn:focus-visible { outline: 2px solid var(--tint); outline-offset: 1px; }

@@ -25,6 +25,7 @@ const APP_FILES = [
   './stats-view.js',
   './charts.js',
   './format.js',
+  './swipe.js',
   './history-view.js',
   './libs/dexie.min.js',
   './manifest.json',

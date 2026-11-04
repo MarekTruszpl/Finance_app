@@ -593,23 +593,17 @@ body::before {
 .unit-btn[aria-pressed="true"] { font-weight: 600; background: var(--thumb); box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12); }
 .unit-btn:focus-visible { outline: 2px solid var(--tint); outline-offset: 1px; }
 
-/* ---------- Заполнение из чека ---------- */
-.receipt-open { margin: 0 0 16px; }
-#receipt-panel { margin-bottom: 20px; scroll-margin-top: calc(72px + env(safe-area-inset-top, 0px)); }
-.row-text { padding: 0; }
-.row-text textarea {
-  flex: 1 1 100%;
-  min-height: 132px;
+/* ---------- Фото чека ---------- */
+.title-actions { display: flex; align-items: center; gap: 4px; }
+#receipt-camera { margin-right: 0; }
+#receipt-camera:disabled { opacity: 0.4; cursor: default; }
+.receipt-note {
+  margin: 0 0 16px;
   padding: 12px 16px;
-  font: inherit;
-  font-size: 16px;
-  line-height: 1.4;
-  color: var(--label);
-  background: transparent;
-  border: 0;
-  resize: vertical;
-  caret-color: var(--tint);
+  border-radius: 10px;
+  background: var(--cell);
+  color: var(--secondary);
+  font-size: 15px;
+  white-space: pre-line;
 }
-.row-text textarea:focus { outline: none; }
-.row-text textarea::placeholder { color: var(--placeholder); }
-#receipt-result .row-value { text-align: right; overflow-wrap: anywhere; }
+.receipt-note--warn { color: var(--label); border-left: 4px solid #ff9f0a; }

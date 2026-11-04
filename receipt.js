@@ -57,6 +57,23 @@ function lineScore(line) {
   return best;
 }
 
+// Сумма позиций: строки, которые заканчиваются числом и буквой налоговой ставки ("11,99 A").
+// Нужна только для сверки итога: если итог прочитан с ошибкой, сумма позиций это покажет.
+function itemsTotal(lines) {
+  let sum = 0;
+  let count = 0;
+  for (const line of lines) {
+    if (EXCLUDED.test(line) || lineScore(line) > 0) continue;
+    const m = line.match(/(?:^|[^\d.,])(\d+(?: \d{3})*[,.]\d{2})\s*[A-G]$/);
+    if (!m) continue;
+    sum += toNumber(m[1]);
+    count++;
+  }
+  return count > 0 ? round2(sum) : null;
+}
+
+const fmt = (n) => n.toFixed(2).replace('.', ',');
+
 function findAmount(lines) {
   const candidates = [];
   lines.forEach((line, i) => {
@@ -74,7 +91,28 @@ function findAmount(lines) {
   if (candidates.length > 0) {
     candidates.sort((a, b) => b.score - a.score || b.index - a.index);
     const best = candidates[0];
-    return { value: best.value, source: best.score >= 90 ? 'keyword' : 'payment' };
+    let value = best.value;
+    let source = best.score >= 90 ? 'keyword' : 'payment';
+    let note = null;
+
+    // Итог и строка оплаты иногда читаются по-разному (ошибка распознавания цифр): сверяем с суммой позиций
+    const distinct = [...new Set(candidates.map((c) => c.value))];
+    const total = itemsTotal(lines);
+    if (distinct.length === 1 && total !== null && Math.abs(total - value) > 0.01) {
+      note = `Итог ${fmt(value)} не сошёлся с суммой позиций ${fmt(total)}: возможна ошибка распознавания. Проверьте сумму по чеку.`;
+    }
+    if (distinct.length > 1) {
+      const matching = total === null ? [] : distinct.filter((v) => Math.abs(v - total) <= 0.01);
+      const list = distinct.map(fmt).join(' и ');
+      if (matching.length === 1 && matching[0] !== value) {
+        value = matching[0];
+        source = 'reconciled';
+        note = `На чеке прочитаны разные итоги (${list}). Взята сумма ${fmt(value)}: она сходится с суммой позиций. Проверьте её.`;
+      } else if (matching.length !== 1) {
+        note = `На чеке прочитаны разные итоги (${list}), сверить с позициями не удалось. Взята сумма ${fmt(value)}. Проверьте её по чеку.`;
+      }
+    }
+    return { value, source, note };
   }
   // Ключевых слов нет: берём самое большое число среди "обычных" строк
   let max = null;
@@ -82,7 +120,7 @@ function findAmount(lines) {
     if (EXCLUDED.test(line)) continue;
     for (const v of moneyTokens(line)) if (v > 0 && (max === null || v > max)) max = v;
   }
-  return max === null ? { value: null, source: null } : { value: max, source: 'largest' };
+  return max === null ? { value: null, source: null, note: null } : { value: max, source: 'largest', note: null };
 }
 
 // ---------- Дата ----------
@@ -141,15 +179,18 @@ function decimalTokens(line) {
   return out;
 }
 
-// Литры и цена за литр. Надёжнее всего, когда литры × цена совпадают с суммой.
+// Литры и цена за литр. Надёжнее всего, когда литры × цена совпадают с суммой строки топлива.
+// Возвращает также lineAmount: сумму именно этой строки (без кофе, хот-дога и прочего на том же чеке).
 function findLiters(lines, amount, fuelSignal) {
   const tolerance = (target) => Math.max(0.05, target * 0.01);
-  let best = null; // { liters, price, strong, diff }
+  let best = null; // { liters, price, strong, diff, lineAmount }
+  const fuelLines = new Set(); // строки, похожие на топливо (для предупреждения о нескольких заправках)
 
-  for (const line of lines) {
-    if (/\bkg\b/i.test(line)) continue; // вес, а не литры
+  lines.forEach((line, index) => {
+    if (/\bkg\b|\bszt\b|\bpcs\b/i.test(line)) return; // вес и штучный товар — не топливо
     const unit = /\bl\b|litr|ltr/i.test(line);
-    if (!fuelSignal && !unit) continue;
+    if (!fuelSignal && !unit) return;
+    const looksFuel = unit || FUEL_PRODUCT.test(line) || (index > 0 && FUEL_PRODUCT.test(lines[index - 1]));
     const nums = decimalTokens(line);
     for (const q of nums) {
       if (q < 1 || q > 200) continue;
@@ -157,17 +198,23 @@ function findLiters(lines, amount, fuelSignal) {
         if (p === q || p < 2 || p > 15) continue;
         const product = q * p;
         const others = nums.filter((n) => n !== q && n !== p);
-        const targets = amount !== null ? [amount, ...others] : others;
-        for (const target of targets) {
+        // сначала числа с той же строки (сумма строки топлива), потом общий итог чека
+        const targets = [
+          ...others.map((value) => ({ value, sameLine: true })),
+          ...(amount !== null ? [{ value: amount, sameLine: false }] : []),
+        ];
+        for (const { value: target, sameLine } of targets) {
           const diff = Math.abs(product - target);
-          if (diff <= tolerance(target) && (best === null || diff < best.diff)) {
-            best = { liters: round2(q), price: p, strong: true, diff };
+          if (diff > tolerance(target)) continue;
+          if (looksFuel) fuelLines.add(index);
+          if (best === null || diff < best.diff) {
+            best = { liters: round2(q), price: p, strong: true, diff, lineAmount: sameLine ? target : null };
           }
         }
       }
     }
-  }
-  if (best) return best;
+  });
+  if (best) return { ...best, multiple: fuelLines.size > 1 };
 
   // Литры и цена на разных строках ("Ilość: 42.15 L", "Cena: 6.49")
   if (fuelSignal) {
@@ -184,7 +231,7 @@ function findLiters(lines, amount, fuelSignal) {
           }
         }
       }
-      return { liters: round2(q), price, strong: price !== null, diff: 0 };
+      return { liters: round2(q), price, strong: price !== null, diff: 0, lineAmount: null, multiple: false };
     }
   }
   return null;
@@ -244,7 +291,7 @@ export function parseReceipt(text, { today = todayIso(), categories = [] } = {})
   const lines = toLines(text);
   const warnings = [];
 
-  let { value: amount, source: amountSource } = findAmount(lines);
+  let { value: amount, source: amountSource, note: amountNote } = findAmount(lines);
 
   const fuelSignal = FUEL_BRAND.test(text) || FUEL_PRODUCT.test(text) || /\bON\b/.test(text);
   const fuel = findLiters(lines, amount, fuelSignal);
@@ -252,12 +299,21 @@ export function parseReceipt(text, { today = todayIso(), categories = [] } = {})
 
   let liters = null;
   let pricePerLiter = null;
+  let otherPurchases = false;
+  let usedFuelLine = false;
   if (isFuel && fuel) {
     liters = fuel.liters;
     pricePerLiter = fuel.price;
     if (amount === null && fuel.strong && fuel.price) {
       amount = round2(fuel.liters * fuel.price); // суммы нет, но есть литры × цена
       amountSource = 'liters';
+    }
+    // На чеке кроме топлива может быть кофе, еда и т.п.: записываем только сумму строки топлива
+    if (fuel.strong && fuel.lineAmount != null && fuel.lineAmount > 0) {
+      otherPurchases = amount !== null && Math.abs(amount - fuel.lineAmount) > 0.01;
+      usedFuelLine = true;
+      amount = fuel.lineAmount;
+      if (otherPurchases) amountSource = 'fuel-line';
     }
   }
 
@@ -267,9 +323,13 @@ export function parseReceipt(text, { today = todayIso(), categories = [] } = {})
   const categoryId = suggestCategory(text, isFuel, categories);
 
   if (amount === null) warnings.push('Сумму найти не удалось: введите её сами.');
+  else if (usedFuelLine) {
+    if (otherPurchases) warnings.push('На чеке есть и другие покупки: записана только сумма топлива. Проверьте её.');
+  } else if (amountNote) warnings.push(amountNote);
   else if (amountSource === 'largest') warnings.push('Слов «итого», «razem», «suma» не нашлось: сумма взята как самое большое число на чеке. Проверьте её.');
   else if (amountSource === 'liters') warnings.push('Сумма посчитана как литры × цена. Проверьте её.');
   if (date === null) warnings.push(future ? 'Дата на чеке позже сегодняшней: оставлена сегодняшняя.' : 'Дату найти не удалось: оставлена сегодняшняя.');
+  if (fuel?.multiple) warnings.push('На чеке несколько строк, похожих на топливо: взята одна. Проверьте литры и сумму.');
   if (isFuel && liters === null) warnings.push('Это похоже на заправку, но литры найти не удалось: введите их сами.');
   if (currency !== 'PLN') warnings.push(`Похоже, чек в ${currency}. В разделе «Автомобиль» суммы только в злотых.`);
 

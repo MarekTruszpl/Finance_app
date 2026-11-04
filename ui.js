@@ -34,8 +34,19 @@ const TABS = {
   stats: ['tab-stats', 'view-stats'],
 };
 
+let currentTab = 'entry';
+let editingNow = false;
+
+// Значок камеры (фото чека) нужен только на вкладке "Ввод" и только для новой записи
+function updateCameraVisibility() {
+  const el = $('receipt-camera');
+  if (el) el.hidden = currentTab !== 'entry' || editingNow;
+}
+
 // Показать вкладку: 'entry' | 'history' | 'stats'
 export function showTab(name) {
+  currentTab = name;
+  updateCameraVisibility();
   for (const [key, [tabId, panelId]] of Object.entries(TABS)) {
     const active = key === name;
     $(tabId).setAttribute('aria-selected', String(active));
@@ -460,7 +471,8 @@ export function fillForm(record) {
 // record — запись, которую редактируем; null — обычный режим добавления
 export function setEditMode(record) {
   const editing = record !== null;
-  $('open-receipt').hidden = editing; // заполнять из чека можно только новую запись
+  editingNow = editing; // заполнять из чека можно только новую запись
+  updateCameraVisibility();
   $('edit-banner').hidden = !editing;
   if (editing) $('edit-banner').textContent = `Редактирование записи от ${formatDate(record.date)}`;
   $('cancel-edit').hidden = !editing;

@@ -19,9 +19,7 @@ import { fillHistoryOptions, readHistorySelection, onHistoryChange, renderHistor
 import { parseReceipt } from './receipt.js';
 import { recognizeReceipt, cancelRecognition, describeOcrError } from './ocr.js';
 import {
-  openReceiptPanel, closeReceiptPanel, readReceiptText, showReceiptResult,
-  setReceiptText, showReceiptStatus, setReceiptBusy,
-  onReceiptOpen, onReceiptParse, onReceiptApply, onReceiptClose, onReceiptPhoto,
+  showReceiptStatus, setReceiptBusy, toggleReceiptDebug, onReceiptPhoto, onReceiptShowText,
 } from './receipt-view.js';
 import { renderStatsView, readStatsPeriod, onStatsPeriodChange, onMonthNav } from './stats-view.js';
 import * as ui from './ui.js';
@@ -45,7 +43,7 @@ let statsMonth = null;    // выбранный на вкладке "Стати�
 let statsModel = null;    // последние показанные данные статистики (там же доступные соседние месяцы)
 let costUnit = getCostUnit(); // стоимость без топлива показываем на 100 или на 1000 км
 let ocrBusy = false;           // идёт распознавание фото чека
-let receiptParsed = null;     // результат разбора чека, пока открыта панель "Заполнить из чека"
+let lastReceiptText = '';     // текст последнего чека (только в памяти; показывается в настройках для проверки)
 
 const findCategory = (id) => categories.find((c) => c.id === id);
 const fmt = (n) => n.toLocaleString('ru-RU');
@@ -155,7 +153,8 @@ async function reload() {
 // ---------- Режим редактирования записи ----------
 
 function handleSelect(record) {
-  closeReceipt(); // при изменении записи панель чека не нужна
+  cancelRecognition(); // при изменении записи фото чека не нужно
+  showReceiptStatus('');
   editingId = record.id;
   refreshCategorySelect(); // чтобы скрытая категория этой записи была в списке
   ui.fillForm(record);
@@ -197,6 +196,7 @@ async function handleSave() {
     await ensureDailySnapshot();
     await saveRecord(result.record);
     noteChange();
+    showReceiptStatus(''); // заметка о распознанном чеке больше не нужна
     if (isEdit) exitEditMode();
     else ui.resetAfterSave();
     await reload();
@@ -645,66 +645,54 @@ function handleHistorySelect(record) {
   handleSelect(record);
 }
 
-// ---------- Заполнение формы из чека ----------
+// ---------- Заполнение формы по фото чека ----------
 
-function handleReceiptParse() {
-  const text = readReceiptText();
-  if (text.trim() === '') {
-    ui.showToast('Вставьте или отсканируйте текст чека');
-    return;
-  }
-  receiptParsed = parseReceipt(text, { today: today(), categories: getVisibleCategories(categories) });
-  showReceiptResult(receiptParsed, { categoryName: findCategory(receiptParsed.categoryId)?.name ?? null });
-}
-
-// Фото чека -> текст (на устройстве) -> обычный разбор текста. Текст остаётся в поле, его можно поправить.
+// Фото -> текст (на устройстве) -> сумма, литры, дата -> форма. Дальше пользователь правит поля и вводит пробег.
 async function handleReceiptPhoto(file) {
   if (ocrBusy) return;
+  if (editingId !== null) {
+    ui.showToast('Сначала завершите изменение записи');
+    return;
+  }
   ocrBusy = true;
   setReceiptBusy(true);
-  receiptParsed = null;
+  ui.showScreen('main'); // фото могли выбрать из галереи в настройках
+  ui.showTab('entry');
+  showReceiptStatus('Готовлю фото…');
   try {
-    const text = await recognizeReceipt(file, showReceiptStatus);
+    const text = await recognizeReceipt(file, (message) => showReceiptStatus(message));
+    lastReceiptText = text;
     if (text.trim() === '') {
-      showReceiptStatus('Текст не найден. Снимите чек ближе, при хорошем свете и без бликов.');
+      showReceiptStatus('Текст не найден. Снимите чек ближе, при хорошем свете и без бликов.', 'warn');
       return;
     }
-    setReceiptText(text);
-    showReceiptStatus('');
-    handleReceiptParse();
+    applyReceipt(parseReceipt(text, { today: today(), categories: getVisibleCategories(categories) }));
   } catch (err) {
     const message = describeOcrError(err);
-    if (message === null) return; // отмена: панель закрыли
+    if (message === null) return; // отмена: пользователь начал править запись
     console.error(err);
-    showReceiptStatus(message);
+    showReceiptStatus(message, 'warn');
   } finally {
     ocrBusy = false;
     setReceiptBusy(false);
   }
 }
 
-// Закрыть панель чека; если идёт распознавание, прервать его
-function closeReceipt() {
-  cancelRecognition();
-  receiptParsed = null;
-  closeReceiptPanel();
-}
-
-// Подставить найденное в форму; пробег чек не содержит, поэтому курсор встаёт на него
-function handleReceiptApply() {
-  if (!receiptParsed) return;
-  const p = receiptParsed;
+// Подставить найденное в форму; пробег на чеке нет, поэтому курсор встаёт на него
+function applyReceipt(parsed) {
   ui.applyReceiptToForm({
-    date: p.date,
-    amount: p.amount,
-    liters: p.isFuel ? p.liters : null,
-    categoryId: p.categoryId,
-    comment: p.isFuel ? null : p.merchant, // у топлива вместо комментария литры
+    date: parsed.date,
+    amount: parsed.amount,
+    liters: parsed.isFuel ? parsed.liters : null,
+    categoryId: parsed.categoryId,
+    comment: parsed.isFuel ? null : parsed.merchant, // у топлива вместо комментария литры
   });
-  closeReceiptPanel();
-  receiptParsed = null;
   refreshForm(); // обновить поля под выбранную категорию
   ui.focusMileage();
+
+  const notes = [...parsed.warnings];
+  if (!parsed.isFuel && parsed.categoryId == null) notes.push('Категорию выберите сами.');
+  showReceiptStatus(notes.join('\n'), 'warn');
   ui.showToast('Проверьте данные и введите пробег');
 }
 
@@ -768,14 +756,8 @@ function registerServiceWorker() {
     onStatsPeriodChange(handleStatsPeriodChange); // вкладка "Статистика"
     onMonthNav(handleMonthNav);
     onHistoryChange(() => refreshHistory({ rebuildOptions: false }));
-    onReceiptOpen(() => {
-      receiptParsed = null;
-      openReceiptPanel();
-    });
-    onReceiptParse(handleReceiptParse);
-    onReceiptApply(handleReceiptApply);
     onReceiptPhoto(handleReceiptPhoto);
-    onReceiptClose(closeReceipt);
+    onReceiptShowText(() => toggleReceiptDebug(lastReceiptText));
 
     // Напоминание о копии
     ui.onReminderSave(handleBackup);

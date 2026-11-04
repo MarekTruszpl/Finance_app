@@ -465,6 +465,64 @@ check('describeOcrError: нет файлов — указывает на README'
 check('describeOcrError: неизвестная ошибка содержит текст ошибки', describeOcrError(new Error('boom')).includes('boom'));
 check('describeOcrError: ошибка-строка не ломает функцию', typeof describeOcrError('сбой сети') === 'string');
 
+// Настоящий вывод Tesseract по фото чека (итог в строке SUMA прочитан неверно: 300.58 вместо 305.57)
+const ORLEN_OCR = `PARAGON FISKALNY
+STACJA PALIW ORLEN NR 4102
+ul. Marszałkowska 100, 00-001. Warszawa
+
+2026-11-04 08:30            Wydruk 000142
+1. BENZYNA PB95
+
+42.50 | x 6.59 zł             280.08 A
+2. KAWA ESPRESSO 200ML
+
+1.00 szt x 11.99 zł            11,99 A
+3. HOT DOG GIGANTE                W
+
+1.00 szt x 13.50 zł            13.50 A
+SUMA PLN             300.58
+Forma płatności:
+Karta płatnicza                    305.57
+Rozliczenie podatku PTU:
+
+PTU A 23,00%          57.14        54 43
+BDO: 000012345                         4567`;
+const orlenOcr = rp(ORLEN_OCR, { today: '2026-11-04' });
+check('только топливо: сумма строки бензина (280,08), а не итог чека с кофе и хот-догом', orlenOcr.amount === 280.08 && orlenOcr.amountSource === 'fuel-line');
+check('только топливо: литры, дата и категория с того же чека найдены', orlenOcr.liters === 42.5 && orlenOcr.date === '2026-11-04' && orlenOcr.isFuel);
+check('только топливо: есть пометка о других покупках', orlenOcr.warnings.some((w) => w.includes('другие покупки')));
+check('только топливо: ошибка в итоге не влияет на сумму топлива', rp(ORLEN_OCR.replace('300.58', '999.99'), { today: '2026-11-04' }).amount === 280.08);
+check('только топливо: чек без другого — пометки о покупках нет', (() => {
+  const r = rp('STACJA ORLEN\n2026-11-04\nBENZYNA PB95\n35,42 l x 6,29 zł 222,80 A\nSUMA PLN 222,80', { today: '2026-11-04' });
+  return r.amount === 222.8 && r.liters === 35.42 && r.warnings.length === 0;
+})());
+check('штучный товар (szt) не принимается за топливо', (() => { const r = rp('STACJA ORLEN\n2,00 szt x 5,00 zł 10,00 A\nRAZEM 10,00'); return r.liters === null; })());
+check('две строки топлива: предупреждение', (() => {
+  const r = rp('STACJA ORLEN\nBENZYNA PB95\n10,00 l x 6,00 zł 60,00 A\nBENZYNA PB95\n20,00 l x 6,00 zł 120,00 A\nRAZEM 180,00');
+  return r.warnings.some((w) => w.includes('несколько строк'));
+})());
+
+// Сверка итогов на обычном (не топливном) чеке: итог в строке SUMA прочитан неверно
+const SHOP_OCR = `BIEDRONKA 1234
+2026-11-04
+Chleb 1 szt x 4.50 4.50 A
+Mleko 2 szt x 3.00 6.00 A
+SUMA PLN 10.80
+Forma płatności:
+Karta płatnicza 10.50`;
+const shop = rp(SHOP_OCR, { today: '2026-11-04' });
+check('сверка: итог и оплата расходятся, побеждает совпадающий с позициями', shop.amount === 10.5 && shop.amountSource === 'reconciled');
+check('сверка: предупреждение содержит оба числа', shop.warnings.some((w) => w.includes('10,80') && w.includes('10,50')));
+check('сверка: без расхождений предупреждений нет', rp(SHOP_OCR.replace('10.80', '10.50'), { today: '2026-11-04' }).warnings.length === 0);
+check('сверка: обе строки одинаково неверны — предупреждение о несходстве с позициями', (() => {
+  const r = rp(SHOP_OCR.replace('10.80', '10.20').replace('10.50', '10.20'), { today: '2026-11-04' });
+  return r.amount === 10.2 && r.warnings.some((w) => w.includes('не сошёлся'));
+})());
+check('сверка: расхождение без позиций — берётся итог с предупреждением', (() => {
+  const r = rp('SUMA 100,00\nKarta płatnicza 120,00');
+  return r.amount === 100 && r.warnings.some((w) => w.includes('разные итоги'));
+})());
+
 // Вывод
 const failed = results.filter((r) => !r.ok);
 console.log(`Тесты: ${results.length - failed.length} из ${results.length} пройдено`);

@@ -272,28 +272,36 @@ function monthNavigation(selected, firstMonth, currentMonth, title) {
 
 // ---------- Журнал по категориям (всё, кроме топлива) ----------
 
-// Что можно выбрать в списке: "Все, кроме топлива" и каждая категория не по топливу.
+// Что можно выбрать в списке: "Все" (по умолчанию), "Топливо", "Все, кроме топлива" и каждая категория отдельно.
 // Скрытая категория показывается, только если у неё есть записи.
+// Категории топлива отдельными пунктами не дублируем: для них есть "Топливо" (кроме случая, когда их несколько).
 export function getHistoryOptions(categories, records) {
   const used = new Set(records.map((r) => r.category_id));
-  const options = [{ value: 'all', label: 'Все, кроме топлива' }];
-  for (const c of categories) {
-    if (c.kind === 'fuel') continue;
-    if (c.archived && !used.has(c.id)) continue;
+  const shown = categories.filter((c) => !c.archived || used.has(c.id));
+  const fuelCount = shown.filter((c) => c.kind === 'fuel').length;
+  const options = [
+    { value: 'all', label: 'Все' },
+    { value: 'fuel', label: 'Топливо' },
+    { value: 'nonfuel', label: 'Все, кроме топлива' },
+  ];
+  for (const c of shown) {
+    if (c.kind === 'fuel' && fuelCount < 2) continue;
     options.push({ value: String(c.id), label: c.archived ? `${c.name} (скрыта)` : c.name });
   }
   return options;
 }
 
-// selection — 'all' или id категории (строкой). Записи по топливу в журнал не попадают никогда.
+// selection — 'all' | 'fuel' | 'nonfuel' | id категории (строкой).
 // Порядок: сверху свежие записи, ниже старые.
 export function buildHistory({ records, categories, selection }) {
   const byId = new Map(categories.map((c) => [c.id, c]));
   const isFuel = (r) => byId.get(r.category_id)?.kind === 'fuel';
-  const all = selection == null || selection === 'all';
-  const wanted = all
-    ? (r) => !isFuel(r)
-    : (r) => r.category_id === Number(selection) && !isFuel(r);
+  const mode = selection == null ? 'all' : selection;
+  const wanted = {
+    all: () => true,
+    fuel: isFuel,
+    nonfuel: (r) => !isFuel(r),
+  }[mode] ?? ((r) => r.category_id === Number(mode));
 
   const picked = records
     .filter(wanted)
@@ -302,7 +310,7 @@ export function buildHistory({ records, categories, selection }) {
   return {
     count: picked.length,
     total: round2(picked.reduce((sum, r) => sum + amountOf(r), 0)),
-    showCategory: all, // в общем списке подписываем категорию у каждой записи
+    showCategory: mode === 'all' || mode === 'nonfuel', // в общих списках подписываем категорию у каждой записи
     items: picked.map((r) => ({
       id: r.id,
       date: r.date,
@@ -310,6 +318,7 @@ export function buildHistory({ records, categories, selection }) {
       amount: r.amount,
       currency: r.currency,
       comment: r.comment ?? '',
+      liters: r.liters ?? null,
       categoryName: byId.get(r.category_id)?.name ?? 'Без категории',
       record: r,
     })),

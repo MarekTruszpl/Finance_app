@@ -382,3 +382,14 @@ export function getBackupReminder({ recordCount, changes, lastBackupIso, now = n
   if (changes > 0 && days >= REMIND_AFTER_DAYS) return { reason: 'days', days, changes };
   return null;
 }
+
+// Пустая форма и нажатие "Сохранить": вместо красных ошибок под каждым полем достаточно одной подсказки.
+// errors — результат validateRecord. Возвращает текст или null, если ошибки не про незаполненные поля.
+const MISSING_NAMES = { mileage: 'пробег', amount: 'сумму', rate: 'курс', liters: 'литры' };
+export function describeMissingFields(errors) {
+  const keys = Object.keys(errors);
+  if (keys.length === 0 || keys.some((key) => !(key in MISSING_NAMES))) return null;
+  const names = keys.map((key) => MISSING_NAMES[key]);
+  const list = names.length > 1 ? `${names.slice(0, -1).join(', ')} и ${names.at(-1)}` : names[0];
+  return `Введите ${list}`;
+}

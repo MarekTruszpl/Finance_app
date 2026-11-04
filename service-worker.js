@@ -16,6 +16,7 @@ const CACHE = `finance-app-${VERSION}`;
 const APP_FILES = [
   './',
   './index.html',
+  './theme-init.js',
   './style.css',
   './app.js',
   './ui.js',

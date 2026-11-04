@@ -47,6 +47,8 @@ function updateCameraVisibility() {
 export function showTab(name) {
   currentTab = name;
   updateCameraVisibility();
+  updateReminderVisibility();
+  if (name !== 'entry') showErrors({}); // красные подсказки не должны «залипать» после ухода с вкладки
   for (const [key, [tabId, panelId]] of Object.entries(TABS)) {
     const active = key === name;
     $(tabId).setAttribute('aria-selected', String(active));
@@ -157,8 +159,8 @@ export function showCategoryFields(category) {
 
 // Подсказка под полем пробега и зелёная метка "+500 км" рядом с названием поля
 // placeholder — число, которое серым стоит в пустом поле (null — просто 0)
-export function showMileageInfo({ hint, delta, placeholder = null }) {
-  $('mileage').placeholder = placeholder === null ? '0' : formatNumber(placeholder);
+// В самом поле всегда серый «0» (placeholder задан в index.html); прошлый пробег показывает hint под полем
+export function showMileageInfo({ hint, delta }) {
   $('mileage-hint').textContent = hint;
   const el = $('mileage-delta');
   if (delta === null || delta === undefined) {
@@ -215,6 +217,29 @@ export function showErrors(errors) {
   }
   const firstInvalid = FIELD_IDS.find((id) => errors[id]);
   if (firstInvalid) $(firstInvalid).focus();
+  refreshDiscard();
+}
+
+// Красная подсказка поля исчезает, как только в нём что-то изменили; смена даты, категории или валюты убирает все
+export function initErrorClearing() {
+  for (const id of FIELD_IDS) {
+    $(id).addEventListener('input', () => {
+      $('error-' + id).textContent = '';
+      $(id).setAttribute('aria-invalid', 'false');
+      refreshDiscard();
+    });
+  }
+  for (const id of ['date', 'category', 'currency']) $(id).addEventListener('change', () => showErrors({}));
+}
+
+// Ничего не введено: обязательные поля пусты (дата и категория всегда заполнены по умолчанию)
+export function isFormUntouched() {
+  return ['mileage', 'amount', 'liters', 'comment'].every((id) => $(id).value.trim() === '');
+}
+
+// Подсказка вместо красных ошибок; курсор в первое пустое поле
+export function focusField(id) {
+  $(id).focus();
 }
 
 // После сохранения: дату, категорию, валюту и курс оставляем, остальное очищаем
@@ -229,7 +254,8 @@ export function resetAfterSave() {
 function refreshDiscard() {
   const typed = ['mileage', 'amount', 'liters', 'comment'].some((id) => $(id).value.trim() !== '');
   const receiptActive = !$('receipt-status').hidden; // идёт чтение фото или показана заметка о чеке
-  $('discard').hidden = editingNow || !(typed || receiptActive);
+  const hasErrors = FIELD_IDS.some((id) => $('error-' + id).textContent !== ''); // крестик убирает и красные подсказки
+  $('discard').hidden = editingNow || !(typed || receiptActive || hasErrors);
 }
 export function onDiscard(callback) {
   $('discard').addEventListener('click', callback);
@@ -680,10 +706,20 @@ export async function saveBackupFile(filename, content) {
 }
 
 // ---------- Напоминание о копии ----------
+let reminderActive = false;
+
+// Плашка видна только на вкладке «Ввод»; на остальных вкладках о копии напоминает красная точка на шестерёнке
+function updateReminderVisibility() {
+  $('backup-reminder').hidden = !(reminderActive && currentTab === 'entry');
+  const dot = !reminderActive || currentTab === 'entry' ? false : true;
+  $('settings-badge').hidden = !dot;
+  $('open-settings').setAttribute('aria-label', dot ? 'Настройки. Нужна резервная копия' : 'Настройки');
+}
+
 export function showBackupReminder(reminder) {
-  const box = $('backup-reminder');
+  reminderActive = Boolean(reminder);
   if (!reminder) {
-    box.hidden = true;
+    updateReminderVisibility();
     return;
   }
   let text;
@@ -695,7 +731,7 @@ export function showBackupReminder(reminder) {
     text = `Последняя копия сделана ${reminder.days} ${plural(reminder.days, ['день', 'дня', 'дней'])} назад, изменений с тех пор: ${reminder.changes}.`;
   }
   $('backup-reminder-text').textContent = text;
-  box.hidden = false;
+  updateReminderVisibility();
 }
 export function onReminderSave(callback) {
   $('reminder-save').addEventListener('click', callback);
@@ -869,4 +905,41 @@ export function applyReceiptToForm({ date, amount, liters, categoryId, comment }
 
 export function focusMileage() {
   $('mileage').focus();
+}
+
+// ---------- Тема оформления ----------
+// 'system' — как в системе, 'light' / 'dark' — выбрано вручную. Начальную тему без мигания ставит theme-init.js.
+const THEME_KEY = 'theme';
+const THEME_BG = { light: '#f2f2f7', dark: '#000000' }; // цвет строки состояния iPhone
+
+function readThemeSetting() {
+  try {
+    const mode = localStorage.getItem(THEME_KEY);
+    return mode === 'light' || mode === 'dark' ? mode : 'system';
+  } catch {
+    return 'system';
+  }
+}
+
+function applyTheme(mode) {
+  const root = document.documentElement;
+  if (mode === 'system') delete root.dataset.theme;
+  else root.dataset.theme = mode;
+  try {
+    if (mode === 'system') localStorage.removeItem(THEME_KEY);
+    else localStorage.setItem(THEME_KEY, mode);
+  } catch {
+    // не удалось запомнить: тема применится, но после перезапуска вернётся системная
+  }
+  // Первая метка — для светлой системной темы, вторая — для тёмной; при ручном выборе обе одного цвета
+  const [forLight, forDark] = document.querySelectorAll('meta[name="theme-color"]');
+  forLight.content = mode === 'dark' ? THEME_BG.dark : THEME_BG.light;
+  forDark.content = mode === 'light' ? THEME_BG.light : THEME_BG.dark;
+}
+
+export function initTheme() {
+  const select = $('theme-select');
+  select.value = readThemeSetting();
+  applyTheme(select.value);
+  select.addEventListener('change', () => applyTheme(select.value));
 }

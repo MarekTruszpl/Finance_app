@@ -1,4 +1,4 @@
-// history-view.js — вкладка "Журнал": все записи выбранной категории (кроме топлива) списком.
+// history-view.js — вкладка "Журнал": записи выбранной категории (или все, или только топливо) списком.
 // Данные приходят готовыми из stats.js (buildHistory).
 import { num, moneyAuto, formatDate, plural } from './format.js';
 
@@ -56,6 +56,7 @@ export function renderHistory(model, { onSelect }) {
 
     // Пробег (и категория, если смотрим сразу все)
     const meta = [`${num(item.mileage)} км`];
+    if (item.liters) meta.push(`${num(item.liters, 2)} л`); // у топлива показываем литры
     if (model.showCategory) meta.push(item.categoryName);
     body.append(top, node('div', 'sub', meta.join(' · ')));
 

@@ -2,7 +2,7 @@
 // Запуск: откройте tests.html через Live Server (результат на странице и в консоли).
 import {
   parseNumber, validateRecord, getTotalMileage, getLastMileage, getFuelMileageInfo,
-  getLastRate, convertToBase, daysSince, validateCategory, getVisibleCategories, formatNumberInput,
+  getLastRate, convertToBase, daysSince, validateCategory, describeMissingFields, getVisibleCategories, formatNumberInput,
   getLastMileageForGroup, buildBackup, validateBackup, buildCsv, getBackupReminder, localDateOf,
 } from './logic.js';
 import { parseCsv, normalizeNumberText, parseDateText, prepareImport, describeImport } from './importer.js';
@@ -358,17 +358,34 @@ const hRecs = [
   { id: 6, date: '2026-04-01', category_id: 99, mileage: 101000, amount: 10 },
 ];
 const hOptions = getHistoryOptions(hCats, hRecs);
-check('журнал: в списке нет топлива и скрытых без записей', hOptions.map((o) => o.label).join('|') === 'Все, кроме топлива|Ремонт|Шины|Старая (скрыта)');
+check('журнал: список — Все, Топливо, Все кроме топлива, затем категории (без скрытых пустых)', hOptions.map((o) => o.label).join('|') === 'Все|Топливо|Все, кроме топлива|Ремонт|Шины|Старая (скрыта)');
+check('журнал: по умолчанию «Все» — первый пункт', hOptions[0].value === 'all');
 const hAll = buildHistory({ records: hRecs, categories: hCats, selection: 'all' });
-check('журнал "все": топливо исключено, остальные от новых к старым', hAll.items.map((i) => i.id).join() === '6,4,1,3,5');
-check('журнал "все": при одной дате выше запись, внесённая позже', hAll.items.findIndex((i) => i.id === 4) < hAll.items.findIndex((i) => i.id === 1));
-check('журнал "все": подписи категорий и "Без категории"', hAll.showCategory === true && hAll.items[0].categoryName === 'Без категории' && hAll.items[4].categoryName === 'Старая');
-check('журнал: поля записи', hAll.items[3].date === '2026-02-05' && hAll.items[3].mileage === 99000 && hAll.items[3].amount === 150 && hAll.items[3].comment === 'Масло');
+check('журнал "Все": топливо входит, от новых к старым', hAll.items.map((i) => i.id).join() === '6,4,1,2,3,5');
+check('журнал "Все": при одной дате выше запись, внесённая позже', hAll.items.findIndex((i) => i.id === 4) < hAll.items.findIndex((i) => i.id === 1));
+check('журнал "Все": подписи категорий и "Без категории"', hAll.showCategory === true && hAll.items[0].categoryName === 'Без категории' && hAll.items[5].categoryName === 'Старая');
+check('журнал: поля записи', hAll.items[4].date === '2026-02-05' && hAll.items[4].mileage === 99000 && hAll.items[4].amount === 150 && hAll.items[4].comment === 'Масло');
 check('журнал: пустой комментарий', hAll.items[1].comment === '');
-check('журнал "все": сумма и количество', hAll.count === 5 && hAll.total === 1210);
+check('журнал "Все": сумма и количество', hAll.count === 6 && hAll.total === 1510);
+const hNonFuel = buildHistory({ records: hRecs, categories: hCats, selection: 'nonfuel' });
+check('журнал "Все, кроме топлива": топлива нет', hNonFuel.items.map((i) => i.id).join() === '6,4,1,3,5' && hNonFuel.total === 1210 && hNonFuel.showCategory === true);
+const hFuel = buildHistory({ records: hRecs, categories: hCats, selection: 'fuel' });
+check('журнал "Топливо": только заправки', hFuel.items.map((i) => i.id).join() === '2' && hFuel.total === 300 && hFuel.showCategory === false);
 const hRepair = buildHistory({ records: hRecs, categories: hCats, selection: '2' });
 check('журнал по категории: только она, свежие сверху', hRepair.items.map((i) => i.id).join() === '1,3' && hRepair.showCategory === false && hRepair.total === 350);
-check('журнал: категорию топливо выбрать нельзя', buildHistory({ records: hRecs, categories: hCats, selection: '1' }).count === 0);
+check('журнал: одна категория топлива отдельным пунктом не дублируется', hOptions.filter((o) => o.label === 'Топливо').length === 1);
+check('журнал: если категорий топлива несколько, каждая выбирается отдельно', (() => {
+  const cats = [...hCats, { id: 6, name: 'Газ', kind: 'fuel' }];
+  return getHistoryOptions(cats, hRecs).some((o) => o.value === '1') && getHistoryOptions(cats, hRecs).some((o) => o.value === '6');
+})());
+check('журнал: литры попадают в запись', buildHistory({ records: [{ id: 9, date: '2026-05-01', category_id: 1, mileage: 1, amount: 10, liters: 5.5 }], categories: hCats, selection: 'fuel' }).items[0].liters === 5.5);
+
+// Пустая форма: одна подсказка вместо красных ошибок
+check('пустая форма: пробег и сумма', describeMissingFields({ mileage: 'x', amount: 'y' }) === 'Введите пробег и сумму');
+check('пустая форма: пробег, сумма и литры', describeMissingFields({ mileage: 'x', amount: 'y', liters: 'z' }) === 'Введите пробег, сумму и литры');
+check('пустая форма: одно поле', describeMissingFields({ amount: 'y' }) === 'Введите сумму');
+check('пустая форма: ошибка даты — обычные ошибки', describeMissingFields({ date: 'x', mileage: 'y' }) === null);
+check('пустая форма: нет ошибок — null', describeMissingFields({}) === null);
 
 // Свайп
 check('свайп: направление — горизонтальное', gestureAxis(30, 5) === 'x');

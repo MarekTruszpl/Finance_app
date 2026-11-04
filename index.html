@@ -16,6 +16,7 @@
   <meta name="apple-mobile-web-app-title" content="Финансы">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <title>Учёт финансов</title>
+  <script src="theme-init.js"></script>
   <link rel="stylesheet" href="style.css">
   <!-- Dexie: обёртка над IndexedDB (хранилище в браузере) -->
   <script src="libs/dexie.min.js"></script>
@@ -35,6 +36,7 @@
             </svg>
           </button>
         <button type="button" id="open-settings" class="icon-button" aria-label="Настройки">
+          <span class="badge" id="settings-badge" hidden></span>
           <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true">
             <path d="M10.08 4.85L10.38 2.33L13.62 2.33L13.92 4.85A7.4 7.4 0 0 1 15.70 5.59L17.69 4.02L19.98 6.31L18.41 8.30A7.4 7.4 0 0 1 19.15 10.08L21.67 10.38L21.67 13.62L19.15 13.92A7.4 7.4 0 0 1 18.41 15.70L19.98 17.69L17.69 19.98L15.70 18.41A7.4 7.4 0 0 1 13.92 19.15L13.62 21.67L10.38 21.67L10.08 19.15A7.4 7.4 0 0 1 8.30 18.41L6.31 19.98L4.02 17.69L5.59 15.70A7.4 7.4 0 0 1 4.85 13.92L2.33 13.62L2.33 10.38L4.85 10.08A7.4 7.4 0 0 1 5.59 8.30L4.02 6.31L6.31 4.02L8.30 5.59A7.4 7.4 0 0 1 10.08 4.85Z"/>
             <circle cx="12" cy="12" r="3"/>
@@ -256,6 +258,18 @@
       <ul id="categories-list" class="group records"></ul>
       <p class="footer">Скрытые категории не показываются в форме, но их записи остаются в истории.</p>
       <button type="button" id="add-category" class="secondary">Добавить категорию</button>
+
+      <h2>Оформление</h2>
+      <div class="group">
+        <div class="row">
+          <label for="theme-select">Тема</label>
+          <select id="theme-select">
+            <option value="system">Как в системе</option>
+            <option value="light">Светлая</option>
+            <option value="dark">Тёмная</option>
+          </select>
+        </div>
+      </div>
 
       <h2>Чек</h2>
       <div class="group">

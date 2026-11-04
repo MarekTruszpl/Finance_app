@@ -11,7 +11,7 @@ import {
 import {
   today, parseNumber, validateRecord, validateCategory, getVisibleCategories,
   getLastMileage, getLastMileageForGroup, getFuelMileageInfo, getLastRate, convertToBase,
-  daysSince, STALE_RATE_DAYS, buildBackup, validateBackup, buildCsv, getBackupReminder,
+  daysSince, STALE_RATE_DAYS, describeMissingFields, buildBackup, validateBackup, buildCsv, getBackupReminder,
 } from './logic.js';
 import { prepareImport, describeImport } from './importer.js';
 import { buildStatsModel, buildHistory, getHistoryOptions } from './stats.js';
@@ -101,26 +101,22 @@ function refreshForm() {
       ui.showMileageInfo({
         hint: `Прошлая заправка: ${fmt(fuelInfo.previous)} км`,
         delta: fuelInfo.delta,
-        placeholder: fuelInfo.previous,
       });
     } else {
       ui.showMileageInfo({
         hint: `Заправок ещё не было. Последний пробег: ${fmt(lastAll)} км`,
         delta: null,
-        placeholder: lastAll,
       });
     }
   } else if (lastNonFuel !== null) {
     ui.showMileageInfo({
       hint: `Последний пробег: ${fmt(lastNonFuel)} км`,
       delta: null,
-      placeholder: lastNonFuel,
     });
   } else {
     ui.showMileageInfo({
       hint: `Последний пробег: ${fmt(lastAll)} км`,
       delta: null,
-      placeholder: lastAll,
     });
   }
   refreshRateField();
@@ -188,8 +184,19 @@ async function handleSave() {
   if (isEdit) input.id = editingId; // запись с id перезапишет существующую
 
   const result = validateRecord(input, category, records);
-  ui.showErrors(result.errors);
-  if (!result.ok) return;
+  if (!result.ok) {
+    // Форма пустая: одна подсказка вместо красных ошибок под каждым полем
+    const missing = ui.isFormUntouched() ? describeMissingFields(result.errors) : null;
+    if (missing) {
+      ui.showErrors({});
+      ui.showToast(missing);
+      ui.focusField(Object.keys(result.errors)[0]);
+    } else {
+      ui.showErrors(result.errors);
+    }
+    return;
+  }
+  ui.showErrors({});
 
   ui.setSaving(true);
   try {
@@ -721,6 +728,8 @@ function registerServiceWorker() {
 (async function start() {
   try {
     ui.initTabs();
+    ui.initErrorClearing();
+    ui.initTheme();
     await seedCategoriesIfEmpty(DEFAULT_CATEGORIES);
     categories = await getCategories(SECTION);
 

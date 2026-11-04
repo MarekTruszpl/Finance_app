@@ -18,8 +18,10 @@
   --bar: rgba(242, 242, 247, 0.85);
   --toast: rgba(60, 60, 67, 0.92);
 }
+/* Тёмная тема: по настройке системы (если вручную не выбрана светлая) или если выбрана вручную.
+   Список цветов повторяется дважды: в CSS нельзя применить один набор к двум разным условиям. */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     --bg: #000000;
     --cell: #1c1c1e;
     --label: #ffffff;
@@ -34,6 +36,22 @@
     --bar: rgba(0, 0, 0, 0.8);
   }
 }
+:root[data-theme="dark"] {
+  --bg: #000000;
+  --cell: #1c1c1e;
+  --label: #ffffff;
+  --secondary: #98989f;
+  --placeholder: #5a5a5e;
+  --sep: #38383a;
+  --tint: #0a84ff;
+  --plus: #30d158;
+  --red: #ff453a;
+  --fill: rgba(118, 118, 128, 0.24);
+  --thumb: #636366;
+  --bar: rgba(0, 0, 0, 0.8);
+}
+:root[data-theme="light"] { color-scheme: light; }
+:root[data-theme="dark"] { color-scheme: dark; }
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 [hidden] { display: none !important; }
@@ -419,13 +437,20 @@ body::before {
   --c-prev: #8e8e93;
 }
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     --c-fuel: #0a84ff;
     --c-other: #ff9f0a;
     --c-mileage: #30d158;
     --c-total: #7d7aff;
     --c-prev: #98989f;
   }
+}
+:root[data-theme="dark"] {
+  --c-fuel: #0a84ff;
+  --c-other: #ff9f0a;
+  --c-mileage: #30d158;
+  --c-total: #7d7aff;
+  --c-prev: #98989f;
 }
 
 .stat-row { padding-top: 10px; padding-bottom: 10px; align-items: flex-start; }
@@ -626,3 +651,16 @@ body::before {
 }
 .discard:active { opacity: 0.6; }
 .discard:focus-visible { outline: 2px solid var(--red); outline-offset: 2px; }
+
+/* ---------- Красная точка на шестерёнке: пора сохранить копию ---------- */
+#open-settings { position: relative; }
+.badge {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--red);
+  border: 2px solid var(--bg);
+}

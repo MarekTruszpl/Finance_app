@@ -22,11 +22,11 @@ export function openReceiptPanel() {
   $('receipt-panel').hidden = false;
   $('open-receipt').hidden = true;
   $('receipt-text').value = '';
+  showReceiptStatus('');
   $('receipt-result').hidden = true;
   $('receipt-notes').hidden = true;
   $('receipt-apply').hidden = true;
   $('receipt-panel').scrollIntoView({ block: 'start', behavior: 'smooth' });
-  $('receipt-text').focus({ preventScroll: true }); // на iPhone сразу появляется "Сканировать текст"
 }
 
 export function closeReceiptPanel() {
@@ -56,6 +56,34 @@ export function showReceiptResult(parsed, { categoryName }) {
 
   // Кнопка "Заполнить" нужна, если нашлось хоть что-то
   $('receipt-apply').hidden = parsed.amount == null && !parsed.date && parsed.liters == null;
+}
+
+// Текст из распознавания по фото
+export function setReceiptText(text) {
+  $('receipt-text').value = text;
+}
+
+// Строка состояния под кнопкой фото; null или пустая строка — скрыть
+export function showReceiptStatus(text) {
+  $('receipt-status').textContent = text ?? '';
+  $('receipt-status').hidden = !text;
+}
+
+// Пока идёт распознавание, кнопки действий недоступны
+export function setReceiptBusy(busy) {
+  $('receipt-photo').disabled = busy;
+  $('receipt-parse').disabled = busy;
+  $('receipt-apply').disabled = busy;
+}
+
+// Кнопка открывает выбор: снять на камеру или взять из галереи; callback получает файл
+export function onReceiptPhoto(callback) {
+  $('receipt-photo').addEventListener('click', () => $('receipt-file').click());
+  $('receipt-file').addEventListener('change', (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = ''; // чтобы можно было выбрать то же фото повторно
+    if (file) callback(file);
+  });
 }
 
 export function onReceiptOpen(callback) {

@@ -12,6 +12,7 @@ import {
 } from './stats.js';
 import { decideSwipe, clampOffset, gestureAxis, ACTION_WIDTH, OPEN_THRESHOLD, FULL_THRESHOLD } from './swipe.js';
 import { parseReceipt } from './receipt.js';
+import { fitSize, enhanceGray, describeOcrStatus, describeOcrError, OcrError } from './ocr.js';
 
 const results = [];
 const check = (name, condition) => results.push({ name, ok: Boolean(condition) });
@@ -435,6 +436,34 @@ check('заправка без бренда: литры × цена = сумма
 check('пустой текст: ничего не найдено, есть предупреждения', (() => { const r = rp(''); return r.amount === null && r.date === null && r.warnings.length >= 2; })());
 check('скрытая категория не предлагается', rp(RECEIPTS.myjnia, { categories: rCats.map((c) => (c.id === 5 ? { ...c, archived: true } : c)) }).categoryId === null);
 check('нет категории "Топливо" — не предлагаем', rp(RECEIPTS.orlen, { categories: rCats.filter((c) => c.kind !== 'fuel') }).categoryId === null);
+
+// ocr.js (сам запуск распознавания проверяется на телефоне; здесь только чистые функции)
+check('fitSize: маленькое фото не увеличивается', (() => { const s = fitSize(800, 1200); return s.width === 800 && s.height === 1200 && s.scale === 1; })());
+check('fitSize: большое фото укладывается в лимит пикселей', (() => { const s = fitSize(4000, 3000); return s.width * s.height <= 4_000_000 * 1.01; })());
+check('fitSize: пропорции сохраняются', (() => { const s = fitSize(4000, 3000); return Math.abs(s.width / s.height - 4 / 3) < 0.01; })());
+check('fitSize: длинная узкая панорама чека не сжимается в точку', (() => { const s = fitSize(1000, 8000); return s.height <= 3000 && s.width >= 300; })());
+check('enhanceGray: растягивает контраст бледного фото', (() => {
+  const px = new Uint8ClampedArray(400); // 100 пикселей: половина серых 100, половина 150
+  for (let p = 0; p < 100; p++) { const v = p < 50 ? 100 : 150; px.set([v, v, v, 255], p * 4); }
+  const r = enhanceGray(px);
+  return r.stretched && px[0] === 0 && px[99 * 4] === 255;
+})());
+check('enhanceGray: одноцветное фото не растягивается и не ломается', (() => {
+  const px = new Uint8ClampedArray(40).fill(128);
+  const r = enhanceGray(px);
+  return !r.stretched && px[0] === 128 && px[3] === 255;
+})());
+check('enhanceGray: цвет превращается в оттенки серого', (() => {
+  const px = new Uint8ClampedArray([255, 0, 0, 255, 0, 255, 0, 255]);
+  enhanceGray(px);
+  return px[0] === px[1] && px[1] === px[2] && px[4] === px[5] && px[5] === px[6];
+})());
+check('describeOcrStatus: чтение показывает проценты', describeOcrStatus('recognizing text', 0.456) === 'Читаю чек… 46%');
+check('describeOcrStatus: неизвестный статус скрывается', describeOcrStatus('что-то новое', 0.5) === null);
+check('describeOcrError: отмена не показывается', describeOcrError(new OcrError('cancelled')) === null);
+check('describeOcrError: нет файлов — указывает на README', describeOcrError(new OcrError('missing-files')).includes('libs/ocr'));
+check('describeOcrError: неизвестная ошибка содержит текст ошибки', describeOcrError(new Error('boom')).includes('boom'));
+check('describeOcrError: ошибка-строка не ломает функцию', typeof describeOcrError('сбой сети') === 'string');
 
 // Вывод
 const failed = results.filter((r) => !r.ok);

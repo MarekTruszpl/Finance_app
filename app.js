@@ -17,9 +17,11 @@ import { prepareImport, describeImport } from './importer.js';
 import { buildStatsModel, buildHistory, getHistoryOptions } from './stats.js';
 import { fillHistoryOptions, readHistorySelection, onHistoryChange, renderHistory } from './history-view.js';
 import { parseReceipt } from './receipt.js';
+import { recognizeReceipt, cancelRecognition, describeOcrError } from './ocr.js';
 import {
   openReceiptPanel, closeReceiptPanel, readReceiptText, showReceiptResult,
-  onReceiptOpen, onReceiptParse, onReceiptApply, onReceiptClose,
+  setReceiptText, showReceiptStatus, setReceiptBusy,
+  onReceiptOpen, onReceiptParse, onReceiptApply, onReceiptClose, onReceiptPhoto,
 } from './receipt-view.js';
 import { renderStatsView, readStatsPeriod, onStatsPeriodChange, onMonthNav } from './stats-view.js';
 import * as ui from './ui.js';
@@ -42,6 +44,7 @@ let snapshotsOpen = false; // открыт ли список автокопий
 let statsMonth = null;    // выбранный на вкладке "Статистика" месяц ('2026-09'); null — текущий
 let statsModel = null;    // последние показанные данные статистики (там же доступные соседние месяцы)
 let costUnit = getCostUnit(); // стоимость без топлива показываем на 100 или на 1000 км
+let ocrBusy = false;           // идёт распознавание фото чека
 let receiptParsed = null;     // результат разбора чека, пока открыта панель "Заполнить из чека"
 
 const findCategory = (id) => categories.find((c) => c.id === id);
@@ -152,7 +155,7 @@ async function reload() {
 // ---------- Режим редактирования записи ----------
 
 function handleSelect(record) {
-  closeReceiptPanel(); // при изменении записи панель чека не нужна
+  closeReceipt(); // при изменении записи панель чека не нужна
   editingId = record.id;
   refreshCategorySelect(); // чтобы скрытая категория этой записи была в списке
   ui.fillForm(record);
@@ -654,6 +657,39 @@ function handleReceiptParse() {
   showReceiptResult(receiptParsed, { categoryName: findCategory(receiptParsed.categoryId)?.name ?? null });
 }
 
+// Фото чека -> текст (на устройстве) -> обычный разбор текста. Текст остаётся в поле, его можно поправить.
+async function handleReceiptPhoto(file) {
+  if (ocrBusy) return;
+  ocrBusy = true;
+  setReceiptBusy(true);
+  receiptParsed = null;
+  try {
+    const text = await recognizeReceipt(file, showReceiptStatus);
+    if (text.trim() === '') {
+      showReceiptStatus('Текст не найден. Снимите чек ближе, при хорошем свете и без бликов.');
+      return;
+    }
+    setReceiptText(text);
+    showReceiptStatus('');
+    handleReceiptParse();
+  } catch (err) {
+    const message = describeOcrError(err);
+    if (message === null) return; // отмена: панель закрыли
+    console.error(err);
+    showReceiptStatus(message);
+  } finally {
+    ocrBusy = false;
+    setReceiptBusy(false);
+  }
+}
+
+// Закрыть панель чека; если идёт распознавание, прервать его
+function closeReceipt() {
+  cancelRecognition();
+  receiptParsed = null;
+  closeReceiptPanel();
+}
+
 // Подставить найденное в форму; пробег чек не содержит, поэтому курсор встаёт на него
 function handleReceiptApply() {
   if (!receiptParsed) return;
@@ -738,10 +774,8 @@ function registerServiceWorker() {
     });
     onReceiptParse(handleReceiptParse);
     onReceiptApply(handleReceiptApply);
-    onReceiptClose(() => {
-      receiptParsed = null;
-      closeReceiptPanel();
-    });
+    onReceiptPhoto(handleReceiptPhoto);
+    onReceiptClose(closeReceipt);
 
     // Напоминание о копии
     ui.onReminderSave(handleBackup);

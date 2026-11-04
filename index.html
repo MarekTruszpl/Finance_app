@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <!-- Политика безопасности: страница может запускать код только со своего адреса,
        не может отправлять данные на другие адреса, подгружать чужие картинки и отправлять формы. -->
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; manifest-src 'self'; worker-src 'self'; form-action 'none'; base-uri 'none'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self'; img-src 'self' data:; connect-src 'self'; manifest-src 'self'; worker-src 'self'; form-action 'none'; base-uri 'none'">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="color-scheme" content="light dark">
   <link rel="manifest" href="manifest.json">
@@ -64,15 +64,18 @@
         <!-- Заполнение из чека: вставляем или сканируем текст чека, приложение подставляет найденное в форму -->
         <div id="receipt-panel" hidden>
           <p class="edit-banner">Заполнение из чека</p>
+          <button type="button" id="receipt-photo" class="primary">Сфотографировать чек или выбрать фото</button>
+          <input type="file" id="receipt-file" accept="image/*" hidden>
+          <p class="footer" id="receipt-status" role="status" aria-live="polite" hidden></p>
           <div class="group">
             <div class="row row-text">
               <textarea id="receipt-text" rows="6" placeholder="Вставьте или отсканируйте текст чека" aria-label="Текст чека" autocapitalize="off" autocorrect="off" spellcheck="false"></textarea>
             </div>
           </div>
-          <p class="footer">На iPhone: нажмите в поле, затем «Сканировать текст» (значок камеры над клавиатурой или пункт в меню при долгом нажатии) и наведите камеру на чек. Фото нигде не сохраняется.</p>
+          <p class="footer">Фото обрабатывается на телефоне, нигде не сохраняется и никуда не отправляется. Распознанный текст появится выше: его можно поправить и нажать «Разобрать текст». Другой способ: нажмите в поле, затем «Сканировать текст» (значок камеры над клавиатурой) и наведите камеру на чек.</p>
           <div class="group" id="receipt-result" hidden></div>
           <p class="footer pre" id="receipt-notes" hidden></p>
-          <button type="button" id="receipt-parse" class="primary">Распознать</button>
+          <button type="button" id="receipt-parse" class="primary">Разобрать текст</button>
           <button type="button" id="receipt-apply" class="primary" hidden>Заполнить форму</button>
           <button type="button" id="receipt-close" class="secondary">Закрыть</button>
         </div>

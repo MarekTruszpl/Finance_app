@@ -5,6 +5,8 @@
 // а без интернета (или если сервер недоступен) открываем сохранённую. Поэтому после загрузки новой
 // версии на хостинг достаточно открыть приложение с интернетом (иногда с перезапуском) — и оно обновится.
 //
+// Файлы распознавания фото (libs/ocr/) кэшируются отдельно, при первом распознавании (нужен интернет один раз).
+//
 // VERSION менять нужно, только если вы удалили или переименовали файлы: старый кэш тогда очистится.
 // Новые файлы приложения обязательно добавляйте в APP_FILES, иначе без интернета они не откроются.
 
@@ -57,9 +59,26 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const { request } = event;
   if (request.method !== 'GET') return;
-  if (new URL(request.url).origin !== self.location.origin) return; // чужие адреса не трогаем
+  const url = new URL(request.url);
+  if (url.origin !== self.location.origin) return; // чужие адреса не трогаем
+  // Файлы распознавания фото тяжёлые (несколько МБ) и не меняются: сначала кэш, сеть только при первой загрузке
+  if (url.pathname.includes('/libs/ocr/')) {
+    event.respondWith(cacheFirst(request));
+    return;
+  }
   event.respondWith(networkFirst(request));
 });
+
+// Файлы libs/ocr не входят в APP_FILES намеренно: если хоть один отсутствует, addAll отменил бы установку
+// всего приложения. Здесь они попадают в кэш по мере первого использования.
+async function cacheFirst(request) {
+  const cache = await caches.open(CACHE);
+  const saved = await cache.match(request, { ignoreSearch: true });
+  if (saved) return saved;
+  const response = await fetch(request);
+  if (response.ok) cache.put(request, response.clone());
+  return response;
+}
 
 // Сначала сервер; если его нет или он ответил ошибкой (например, 404) — сохранённая копия
 async function networkFirst(request) {

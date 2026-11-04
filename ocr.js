@@ -160,20 +160,26 @@ export async function recognizeReceipt(file, onProgress = () => {}) {
   if (typeof WebAssembly === 'undefined') throw new OcrError('unsupported');
 
   let worker = null;
+  let isCancelled = false;
   let rejectCancel;
   const cancelled = new Promise((_, reject) => { rejectCancel = reject; });
   cancelled.catch(() => {}); // чтобы отмена без ожидающего не давала лишней ошибки в консоли
   current = {
     cancel: () => {
+      isCancelled = true;
       worker?.terminate();
       rejectCancel(new OcrError('cancelled'));
     },
   };
 
   const work = (async () => {
+    // После каждого долгого шага проверяем отмену, иначе распознавание продолжилось бы в фоне
+    const stopIfCancelled = () => { if (isCancelled) throw new OcrError('cancelled'); };
     onProgress('Готовлю фото…');
     const image = await prepareImage(file);
+    stopIfCancelled();
     const Tesseract = await loadTesseract();
+    stopIfCancelled();
     const base = new URL(OCR_DIR, document.baseURI).href;
     worker = await Tesseract.createWorker(OCR_LANGS, 1, {
       workerPath: `${base}worker.min.js`,
@@ -187,6 +193,10 @@ export async function recognizeReceipt(file, onProgress = () => {}) {
         if (text) onProgress(text);
       },
     });
+    if (isCancelled) {
+      await worker.terminate().catch(() => {});
+      throw new OcrError('cancelled');
+    }
     // 4 — «одна колонка текста переменной ширины», обычно лучше всего для чеков
     await worker.setParameters({
       tessedit_pageseg_mode: Tesseract.PSM?.SINGLE_COLUMN ?? '4',

@@ -128,7 +128,14 @@
             </div>
           </div>
 
-          <button type="submit" id="save" class="primary">Сохранить</button>
+          <div class="form-actions">
+            <button type="submit" id="save" class="primary">Сохранить</button>
+            <button type="button" id="discard" class="discard" aria-label="Отменить ввод" title="Отменить ввод" hidden>
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" aria-hidden="true">
+                <path d="M6 6l12 12M18 6L6 18"/>
+              </svg>
+            </button>
+          </div>
           <button type="button" id="cancel-edit" class="secondary" hidden>Отмена</button>
           <button type="button" id="delete" class="secondary destructive" hidden>Удалить запись</button>
         </form>

@@ -221,6 +221,22 @@ export function showErrors(errors) {
 export function resetAfterSave() {
   for (const id of ['mileage', 'amount', 'liters', 'comment']) $(id).value = '';
   showErrors({});
+  refreshDiscard();
+}
+
+// Красный кружок «отменить ввод»: виден, пока в форме что-то введено или идёт работа с чеком.
+// При изменении существующей записи он не нужен: там есть своя кнопка «Отмена».
+function refreshDiscard() {
+  const typed = ['mileage', 'amount', 'liters', 'comment'].some((id) => $(id).value.trim() !== '');
+  const receiptActive = !$('receipt-status').hidden; // идёт чтение фото или показана заметка о чеке
+  $('discard').hidden = editingNow || !(typed || receiptActive);
+}
+export function onDiscard(callback) {
+  $('discard').addEventListener('click', callback);
+  for (const id of ['mileage', 'amount', 'liters', 'comment']) $(id).addEventListener('input', refreshDiscard);
+  // Заметка о чеке скрывается и показывается в receipt-view.js; следим за ней, чтобы не связывать модули
+  new MutationObserver(refreshDiscard).observe($('receipt-status'), { attributes: true, attributeFilter: ['hidden'] });
+  refreshDiscard();
 }
 
 export function setSaving(isSaving) {
@@ -473,6 +489,7 @@ export function setEditMode(record) {
   const editing = record !== null;
   editingNow = editing; // заполнять из чека можно только новую запись
   updateCameraVisibility();
+  refreshDiscard();
   $('edit-banner').hidden = !editing;
   if (editing) $('edit-banner').textContent = `Редактирование записи от ${formatDate(record.date)}`;
   $('cancel-edit').hidden = !editing;
@@ -847,6 +864,7 @@ export function applyReceiptToForm({ date, amount, liters, categoryId, comment }
   if (liters != null) $('liters').value = formatNumberInput(formatRate(liters), { decimals: 2 });
   if (comment && $('comment').value.trim() === '') $('comment').value = comment;
   showErrors({});
+  refreshDiscard();
 }
 
 export function focusMileage() {

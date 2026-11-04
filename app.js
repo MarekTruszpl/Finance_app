@@ -678,6 +678,16 @@ async function handleReceiptPhoto(file) {
   }
 }
 
+// Красный кружок: отменить всё введённое, в том числе распознанное с чека
+function handleDiscard() {
+  cancelRecognition();   // если фото ещё читается
+  showReceiptStatus(''); // убрать заметку о чеке
+  ui.resetAfterSave();   // очистить пробег, сумму, литры и комментарий
+  ui.setDate(today());   // дату с чека тоже сбрасываем
+  refreshForm();
+  ui.showToast('Ввод отменён');
+}
+
 // Подставить найденное в форму; пробег на чеке нет, поэтому курсор встаёт на него
 function applyReceipt(parsed) {
   ui.applyReceiptToForm({
@@ -757,6 +767,7 @@ function registerServiceWorker() {
     onMonthNav(handleMonthNav);
     onHistoryChange(() => refreshHistory({ rebuildOptions: false }));
     onReceiptPhoto(handleReceiptPhoto);
+    ui.onDiscard(handleDiscard);
     onReceiptShowText(() => toggleReceiptDebug(lastReceiptText));
 
     // Напоминание о копии

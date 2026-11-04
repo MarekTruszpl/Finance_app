@@ -607,3 +607,22 @@ body::before {
   white-space: pre-line;
 }
 .receipt-note--warn { color: var(--label); border-left: 4px solid #ff9f0a; }
+
+/* ---------- Отмена ввода: маленький красный кружок рядом с «Сохранить» ---------- */
+.form-actions { display: flex; align-items: center; gap: 14px; margin-top: 4px; }
+.form-actions .primary { flex: 1; width: auto; margin-top: 0; }
+.discard {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--red);
+  color: #fff;
+  cursor: pointer;
+}
+.discard:active { opacity: 0.6; }
+.discard:focus-visible { outline: 2px solid var(--red); outline-offset: 2px; }

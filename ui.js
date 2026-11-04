@@ -460,6 +460,7 @@ export function fillForm(record) {
 // record — запись, которую редактируем; null — обычный режим добавления
 export function setEditMode(record) {
   const editing = record !== null;
+  $('open-receipt').hidden = editing; // заполнять из чека можно только новую запись
   $('edit-banner').hidden = !editing;
   if (editing) $('edit-banner').textContent = `Редактирование записи от ${formatDate(record.date)}`;
   $('cancel-edit').hidden = !editing;
@@ -820,4 +821,22 @@ export function onImportCancel(callback) {
 }
 export function onClearRecords(callback) {
   $('clear-records').addEventListener('click', callback);
+}
+
+// ---------- Заполнение формы из чека ----------
+
+// Подставляет в форму то, что нашлось на чеке; пустые значения поля не трогают
+export function applyReceiptToForm({ date, amount, liters, categoryId, comment }) {
+  if (date) $('date').value = date;
+  if (amount != null) $('amount').value = formatNumberInput(formatRate(amount), { decimals: 2 });
+  if (categoryId != null && [...$('category').options].some((o) => o.value === String(categoryId))) {
+    $('category').value = String(categoryId);
+  }
+  if (liters != null) $('liters').value = formatNumberInput(formatRate(liters), { decimals: 2 });
+  if (comment && $('comment').value.trim() === '') $('comment').value = comment;
+  showErrors({});
+}
+
+export function focusMileage() {
+  $('mileage').focus();
 }

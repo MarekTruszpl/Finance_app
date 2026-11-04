@@ -16,6 +16,11 @@ import {
 import { prepareImport, describeImport } from './importer.js';
 import { buildStatsModel, buildHistory, getHistoryOptions } from './stats.js';
 import { fillHistoryOptions, readHistorySelection, onHistoryChange, renderHistory } from './history-view.js';
+import { parseReceipt } from './receipt.js';
+import {
+  openReceiptPanel, closeReceiptPanel, readReceiptText, showReceiptResult,
+  onReceiptOpen, onReceiptParse, onReceiptApply, onReceiptClose,
+} from './receipt-view.js';
 import { renderStatsView, readStatsPeriod, onStatsPeriodChange, onMonthNav } from './stats-view.js';
 import * as ui from './ui.js';
 
@@ -37,6 +42,7 @@ let snapshotsOpen = false; // открыт ли список автокопий
 let statsMonth = null;    // выбранный на вкладке "Статистика" месяц ('2026-09'); null — текущий
 let statsModel = null;    // последние показанные данные статистики (там же доступные соседние месяцы)
 let costUnit = getCostUnit(); // стоимость без топлива показываем на 100 или на 1000 км
+let receiptParsed = null;     // результат разбора чека, пока открыта панель "Заполнить из чека"
 
 const findCategory = (id) => categories.find((c) => c.id === id);
 const fmt = (n) => n.toLocaleString('ru-RU');
@@ -146,6 +152,7 @@ async function reload() {
 // ---------- Режим редактирования записи ----------
 
 function handleSelect(record) {
+  closeReceiptPanel(); // при изменении записи панель чека не нужна
   editingId = record.id;
   refreshCategorySelect(); // чтобы скрытая категория этой записи была в списке
   ui.fillForm(record);
@@ -635,6 +642,36 @@ function handleHistorySelect(record) {
   handleSelect(record);
 }
 
+// ---------- Заполнение формы из чека ----------
+
+function handleReceiptParse() {
+  const text = readReceiptText();
+  if (text.trim() === '') {
+    ui.showToast('Вставьте или отсканируйте текст чека');
+    return;
+  }
+  receiptParsed = parseReceipt(text, { today: today(), categories: getVisibleCategories(categories) });
+  showReceiptResult(receiptParsed, { categoryName: findCategory(receiptParsed.categoryId)?.name ?? null });
+}
+
+// Подставить найденное в форму; пробег чек не содержит, поэтому курсор встаёт на него
+function handleReceiptApply() {
+  if (!receiptParsed) return;
+  const p = receiptParsed;
+  ui.applyReceiptToForm({
+    date: p.date,
+    amount: p.amount,
+    liters: p.isFuel ? p.liters : null,
+    categoryId: p.categoryId,
+    comment: p.isFuel ? null : p.merchant, // у топлива вместо комментария литры
+  });
+  closeReceiptPanel();
+  receiptParsed = null;
+  refreshForm(); // обновить поля под выбранную категорию
+  ui.focusMileage();
+  ui.showToast('Проверьте данные и введите пробег');
+}
+
 // ---------- Работа без интернета ----------
 
 // Service worker хранит копию приложения на устройстве. Работает только по https или на localhost.
@@ -695,6 +732,16 @@ function registerServiceWorker() {
     onStatsPeriodChange(handleStatsPeriodChange); // вкладка "Статистика"
     onMonthNav(handleMonthNav);
     onHistoryChange(() => refreshHistory({ rebuildOptions: false }));
+    onReceiptOpen(() => {
+      receiptParsed = null;
+      openReceiptPanel();
+    });
+    onReceiptParse(handleReceiptParse);
+    onReceiptApply(handleReceiptApply);
+    onReceiptClose(() => {
+      receiptParsed = null;
+      closeReceiptPanel();
+    });
 
     // Напоминание о копии
     ui.onReminderSave(handleBackup);

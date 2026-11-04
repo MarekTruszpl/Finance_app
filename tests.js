@@ -11,6 +11,7 @@ import {
   cumulativeByDay, byCategory, buildStatsModel, shiftMonth, getHistoryOptions, buildHistory,
 } from './stats.js';
 import { decideSwipe, clampOffset, gestureAxis, ACTION_WIDTH, OPEN_THRESHOLD, FULL_THRESHOLD } from './swipe.js';
+import { parseReceipt } from './receipt.js';
 
 const results = [];
 const check = (name, condition) => results.push({ name, ok: Boolean(condition) });
@@ -378,6 +379,62 @@ check('свайп влево: строка раскрывается под кн�
 check('свайп вправо до конца: сразу "изменить"', decideSwipe(FULL_THRESHOLD).action === 'edit' && decideSwipe(FULL_THRESHOLD).rest === 0);
 check('свайп влево до конца: сразу "удалить"', decideSwipe(-FULL_THRESHOLD).action === 'delete' && decideSwipe(-FULL_THRESHOLD).rest === 0);
 check('свайп: строку нельзя утянуть слишком далеко', clampOffset(999) < 200 && clampOffset(-999) > -200 && clampOffset(40) === 40);
+
+// Разбор чека. Тексты ниже — настоящий вывод распознавания (Tesseract) на зашумлённых снимках
+// выдуманных чеков: с потерянными польскими буквами и опечатками ("zt", "Zaptacono", "Przyktadowa").
+const RECEIPTS = {
+  "orlen": "ORLEN\n\nStacja Paliw nr 1234\n\nul. Przyktadowa 5, 00-001 Warszawa\nNIP 123-456-78-90\n\nPARAGON FISKALNY\n\n2025-03-14 18:42 Nr 012345\nPB95\n\n35,420 l x 6,290 222,78 A\nSPRZEDAZ OPODATKOWANA A 222,78\nPTU A 23,00% 41,66\nSUMA PTU A 41,66\nSUMA PLN 222,78\nKarta ptatnicza 222,78\nReszta 0,00\n",
+  "sklep": "BIEDRONKA 1234\n\nJMP S.A. NIP 779-10-11-327\n\nPARAGON FISKALNY\n\nChleb pszenny 1 x 4,29 4,29 C\nMleko 3,2% 2 x 3,49 6,98 C\nSer z6tty 1x 12,99 12,99 C\nWoda 1,51 3 x 1,99 5,97 A\nSPRZEDAZ OPODATKOWANA A 5,97\nSPRZEDAZ OPODATKOWANA C 24,26\nPTU A 23% ih al72\nPTU C 5% 1,16\nSUMA PTU 2,28\nSUMA PLN 30,23\nGotowka 50,00\nReszta 19,77\n14.03.2025 12:31\n",
+  "myjnia": "MYJNIA BEZDOTYKOWA BLASK\n\nul. Wodna 3, Poznan\n\nData: 20.03.2025 11:05\n\nProgram 3 - piana aktywna 25,00\nRAZEM 25,00 zt\nZaptacono karta 25,00\n",
+  "serwis": "AUTO SERWIS KOWALSKI\n\nFAKTURA / PARAGON\n\nData sprzedazy: 05.04.2025\n\nWymiana oleju silnikowego 1x 180,00\nFiltr oleju 1x 45,00\nFiltr powietrza 1x 60,00\nWartos¢é netto 231,71\nVAT 23% 53,29\nDo zaptaty: 285,00 PLN\n",
+  "bp": "BP Warszawa Zoliborz\nPARAGON FISKALNY #4821\n09-04-2025 07:15\n\nDiesel Ultimate\n\nIlosé: 42.15 L\n\nCena: 6.49 PLN/L\nWartosé: 273.55 PLN\nRAZEM 273,55\n\nKARTA 273,55\n",
+  "eur": "PARKHAUS CENTRAL\n\nDate: 12/06/2025 16:20\nParking 3h 8.50\nService fee 1.00\nTOTAL EUR 9.50\nPaid by card 9.50\n"
+};
+
+const rCats = [
+  { id: 1, name: 'Топливо', kind: 'fuel' }, { id: 2, name: 'ТО (масло, фильтры)', kind: 'regular' }, { id: 3, name: 'Ремонт', kind: 'regular' },
+  { id: 4, name: 'Шины и диски', kind: 'regular' }, { id: 5, name: 'Мойка и уход', kind: 'regular' }, { id: 6, name: 'Страховка', kind: 'regular' },
+  { id: 7, name: 'Парковка и платные дороги', kind: 'regular' }, { id: 8, name: 'Прочее', kind: 'regular' },
+];
+const rOpts = { today: '2026-11-02', categories: rCats };
+const rp = (text, extra = {}) => parseReceipt(text, { ...rOpts, ...extra });
+
+const rOrlen = rp(RECEIPTS.orlen);
+check('чек Orlen: сумма по слову SUMA', rOrlen.amount === 222.78 && rOrlen.amountSource === 'keyword');
+check('чек Orlen: литры и цена (литры × цена = сумма)', rOrlen.liters === 35.42 && rOrlen.pricePerLiter === 6.29);
+check('чек Orlen: дата, место, топливо', rOrlen.date === '2025-03-14' && rOrlen.merchant === 'Orlen' && rOrlen.isFuel === true);
+check('чек Orlen: категория "Топливо"', rOrlen.categoryId === 1 && rOrlen.warnings.length === 0);
+const rShop = rp(RECEIPTS.sklep);
+check('чек магазина: сумма не путается со сдачей, наличными и налогом', rShop.amount === 30.23);
+check('чек магазина: не топливо, литров нет, категории нет', rShop.isFuel === false && rShop.liters === null && rShop.categoryId === null);
+check('чек магазина: дата в конце чека, название без номера', rShop.date === '2025-03-14' && rShop.merchant === 'Biedronka');
+const rWash = rp(RECEIPTS.myjnia);
+check('чек мойки: сумма, дата, категория "Мойка"', rWash.amount === 25 && rWash.date === '2025-03-20' && rWash.categoryId === 5);
+const rService = rp(RECEIPTS.serwis);
+check('чек сервиса: "Do zaptaty" с опечаткой, а не нетто и позиции', rService.amount === 285 && rService.date === '2025-04-05');
+check('чек сервиса: категория "ТО" по словам про масло и фильтры', rService.categoryId === 2);
+const rBp = rp(RECEIPTS.bp);
+check('чек BP: литры и цена на разных строках, "Ilosc" с ошибкой', rBp.liters === 42.15 && rBp.pricePerLiter === 6.49 && rBp.amount === 273.55);
+check('чек BP: дата ДД-ММ-ГГГГ и категория "Топливо"', rBp.date === '2025-04-09' && rBp.categoryId === 1);
+const rEur = rp(RECEIPTS.eur);
+check('чек в евро: сумма с точкой, валюта, предупреждение', rEur.amount === 9.5 && rEur.currency === 'EUR' && rEur.warnings.some((w) => w.includes('EUR')));
+check('чек в евро: дата ДД/ММ/ГГГГ и категория "Парковка"', rEur.date === '2025-06-12' && rEur.categoryId === 7);
+
+// Особые случаи
+const noKeywords = rp('Sklep\n12.03.2025\nBulka 3,50\nSok 7,20');
+check('без слов-подсказок: берётся самое большое число и выводится предупреждение', noKeywords.amount === 7.2 && noKeywords.amountSource === 'largest' && noKeywords.warnings.length > 0);
+check('сумма на следующей строке после "DO ZAPŁATY"', rp('DO ZAPŁATY\n150,00 PLN').amount === 150);
+check('сумма с пробелом-разрядом', rp('RAZEM 1 234,56 zł').amount === 1234.56);
+check('число с тремя знаками (литры, цена) не считается суммой', rp('35,420 l x 6,290').amount === null);
+check('проценты и даты не считаются суммой', rp('PTU A 23,00% 14.03.2025').amount === null);
+check('цифры, заменённые буквами в дате (2O25-O3-l4)', rp('RAZEM 10,00\nData: 2O25-O3-l4').date === '2025-03-14');
+check('будущая дата не принимается', rp('RAZEM 10,00\n31.12.2026').date === null && rp('RAZEM 10,00\n31.12.2026').warnings.some((w) => w.includes('позже')));
+check('вес (кг) не принимается за литры', rp('Szynka 1,250 kg x 39,90 = 49,88\nRAZEM 49,88').isFuel === false);
+check('бутылка воды (1,5l) не делает чек заправкой', rp('Woda 1,5l 2 x 1,99 3,98\nRAZEM 3,98').isFuel === false);
+check('заправка без бренда: литры × цена = сумма', (() => { const r = rp('PB95\n35,420 l 6,290 222,80 A\nRAZEM 222,80'); return r.isFuel && r.liters === 35.42; })());
+check('пустой текст: ничего не найдено, есть предупреждения', (() => { const r = rp(''); return r.amount === null && r.date === null && r.warnings.length >= 2; })());
+check('скрытая категория не предлагается', rp(RECEIPTS.myjnia, { categories: rCats.map((c) => (c.id === 5 ? { ...c, archived: true } : c)) }).categoryId === null);
+check('нет категории "Топливо" — не предлагаем', rp(RECEIPTS.orlen, { categories: rCats.filter((c) => c.kind !== 'fuel') }).categoryId === null);
 
 // Вывод
 const failed = results.filter((r) => !r.ok);

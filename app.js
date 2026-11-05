@@ -26,14 +26,12 @@ import * as ui from './ui.js';
 
 const SECTION = 'car';
 const MULTI_CURRENCY = SECTIONS[SECTION].multiCurrency; // для автомобиля false: только злотые
-const PAGE_SIZE = 10; // сколько записей показывать сразу и по кнопке "Показать ещё"
 
 let records = [];    // записи текущего раздела
 let allRecords = []; // записи всех разделов (для поиска последнего курса)
 let categories = []; // все категории раздела, включая скрытые
 let editingId = null;      // id редактируемой записи; null — обычное добавление
 let categoryEditor = null; // { id, used } пока открыт редактор категории; id = null для новой
-let visibleCount = PAGE_SIZE;
 let pendingImport = null; // { text, fileName } выбранного CSV, пока открыт предпросмотр
 let importResult = null;   // результат prepareImport для предпросмотра
 let allCategories = [];   // категории всех разделов (для резервной копии и CSV)
@@ -122,22 +120,11 @@ function refreshForm() {
   refreshRateField();
 }
 
-function renderList() {
-  const nameById = Object.fromEntries(categories.map((c) => [c.id, c.name]));
-  ui.renderRecords(records.slice(0, visibleCount), nameById, {
-    selectedId: editingId,
-    onEdit: handleSelect,          // свайп вправо
-    onDelete: handleDeleteRecord,  // свайп влево
-  });
-  ui.setShowMore(records.length > visibleCount);
-}
-
 // Загрузить записи из базы и обновить все экраны
 async function reload() {
   allRecords = await getAllRecords();
   allCategories = await getAllCategories();
   records = await getRecords(SECTION);
-  renderList();
   ui.renderStats({ lastMileage: getLastMileage(records) });
   refreshStats();
   refreshHistory();
@@ -155,7 +142,7 @@ function handleSelect(record) {
   refreshCategorySelect(); // чтобы скрытая категория этой записи была в списке
   ui.fillForm(record);
   ui.setEditMode(record);
-  renderList(); // подсветить выбранную строку
+  refreshHistory({ rebuildOptions: false }); // подсветить открытую запись в Журнале
   refreshForm();
 }
 
@@ -165,7 +152,7 @@ function exitEditMode() {
   ui.resetAfterSave(); // очистить поля
   ui.setDate(today());
   refreshCategorySelect();
-  renderList();
+  refreshHistory({ rebuildOptions: false });
   refreshForm();
 }
 
@@ -201,13 +188,14 @@ async function handleSave() {
   ui.setSaving(true);
   try {
     await ensureDailySnapshot();
-    await saveRecord(result.record);
+    const savedId = await saveRecord(result.record);
     noteChange();
     showReceiptStatus(''); // заметка о распознанном чеке больше не нужна
     if (isEdit) exitEditMode();
     else ui.resetAfterSave();
     await reload();
-    ui.showToast(isEdit ? 'Изменения сохранены' : 'Сохранено');
+    if (isEdit) ui.showToast('Изменения сохранены');
+    else ui.showToast('Сохранено', { label: 'Изменить', onClick: () => editSavedRecord(savedId) });
   } catch (err) {
     console.error(err);
     ui.showToast('Не удалось сохранить. Подробности в консоли.');
@@ -239,7 +227,19 @@ function handleDelete() {
   if (editingId !== null) deleteRecordById(editingId);
 }
 
-// Свайп влево по записи в списке
+// Кнопка «Изменить» в сообщении «Сохранено»: открыть только что сохранённую запись (если не начат новый ввод)
+function editSavedRecord(id) {
+  if (!ui.isFormUntouched()) {
+    ui.showToast('Сначала закончите или отмените ввод');
+    return;
+  }
+  const record = records.find((r) => r.id === id);
+  if (!record) return;
+  ui.showTab('entry');
+  handleSelect(record);
+}
+
+// Свайп влево по записи в Журнале
 function handleDeleteRecord(record) {
   deleteRecordById(record.id, `от ${record.date.split('-').reverse().join('.')} (${fmt(record.amount)})`);
 }
@@ -563,7 +563,6 @@ function refreshDataStatus() {
 // После замены всех данных (восстановление из файла или из автокопии) обновляем экраны
 async function refreshAfterReplace() {
   categories = await getCategories(SECTION);
-  visibleCount = PAGE_SIZE;
   closeCategoryEditor();
   exitEditMode();
   await reload();
@@ -643,11 +642,15 @@ function refreshHistory({ rebuildOptions = true } = {}) {
     if (!options.some((o) => o.value === selection)) selection = 'all';
     fillHistoryOptions(options, selection);
   }
-  renderHistory(buildHistory({ records, categories, selection }), { onSelect: handleHistorySelect });
+  renderHistory(buildHistory({ records, categories, selection }), {
+    onEdit: handleHistoryEdit,     // нажатие или свайп вправо
+    onDelete: handleDeleteRecord,  // свайп влево
+    selectedId: editingId,
+  });
 }
 
-// Нажали на запись в журнале: открываем её на редактирование во вкладке "Ввод"
-function handleHistorySelect(record) {
+// Нажали на запись в Журнале или провели вправо: открываем её на изменение во вкладке "Ввод"
+function handleHistoryEdit(record) {
   ui.showTab('entry');
   handleSelect(record);
 }
@@ -728,6 +731,7 @@ function registerServiceWorker() {
 (async function start() {
   try {
     ui.initTabs();
+    ui.initTabBarKeyboardHiding();
     ui.initErrorClearing();
     ui.initTheme();
     await seedCategoriesIfEmpty(DEFAULT_CATEGORIES);
@@ -746,10 +750,6 @@ function registerServiceWorker() {
     ui.onSubmit(handleSave);
     ui.onCancelEdit(exitEditMode);
     ui.onDelete(handleDelete);
-    ui.onShowMore(() => {
-      visibleCount += PAGE_SIZE;
-      renderList();
-    });
 
     // Настройки
     ui.onOpenSettings(openSettings);

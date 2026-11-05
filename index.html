@@ -47,14 +47,6 @@
       <p class="subtitle" id="header-mileage"></p>
     </header>
 
-    <div class="tabbar">
-      <div class="tabs" role="tablist" aria-label="Экран">
-        <button class="tab" role="tab" id="tab-entry" aria-controls="view-entry" aria-selected="true">Ввод</button>
-        <button class="tab" role="tab" id="tab-history" aria-controls="view-history" aria-selected="false">Журнал</button>
-        <button class="tab" role="tab" id="tab-stats" aria-controls="view-stats" aria-selected="false">Статистика</button>
-      </div>
-    </div>
-
     <main>
       <p id="app-error" class="banner" hidden></p>
 
@@ -141,13 +133,9 @@
           <button type="button" id="cancel-edit" class="secondary" hidden>Отмена</button>
           <button type="button" id="delete" class="secondary destructive" hidden>Удалить запись</button>
         </form>
-
-        <h2>Последние записи</h2>
-        <ul id="records" class="group records"></ul>
-        <button type="button" id="show-more" class="secondary" hidden>Показать ещё</button>
       </section>
 
-      <!-- ===== Журнал: все записи категории (кроме топлива) от старых к новым ===== -->
+      <!-- ===== Журнал: записи списком; нажатие — открыть, свайп вправо — изменить, влево — удалить ===== -->
       <section id="view-history" role="tabpanel" aria-labelledby="tab-history" hidden>
         <div class="group">
           <div class="row">
@@ -213,6 +201,33 @@
         </div>
       </section>
     </main>
+
+    <!-- Нижняя панель: переключение экранов. Подписи для экранных читалок — в aria-label -->
+    <nav class="tabbar" id="tabbar" aria-label="Экран">
+      <div class="tabs" role="tablist">
+        <button type="button" class="tab" role="tab" id="tab-entry" aria-controls="view-entry" aria-selected="true" aria-label="Ввод" title="Ввод">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="9"/>
+            <path d="M12 8v8M8 12h8"/>
+          </svg>
+        </button>
+        <button type="button" class="tab" role="tab" id="tab-history" aria-controls="view-history" aria-selected="false" aria-label="Журнал" title="Журнал">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M9 6h11M9 12h11M9 18h11"/>
+            <circle cx="4.5" cy="6" r="1" fill="currentColor"/>
+            <circle cx="4.5" cy="12" r="1" fill="currentColor"/>
+            <circle cx="4.5" cy="18" r="1" fill="currentColor"/>
+          </svg>
+        </button>
+        <button type="button" class="tab" role="tab" id="tab-stats" aria-controls="view-stats" aria-selected="false" aria-label="Статистика" title="Статистика">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="4" y="12" width="4" height="8" rx="1"/>
+            <rect x="10" y="4" width="4" height="16" rx="1"/>
+            <rect x="16" y="9" width="4" height="11" rx="1"/>
+          </svg>
+        </button>
+      </div>
+    </nav>
   </div>
 
   <!-- ================= Экран настроек ================= -->

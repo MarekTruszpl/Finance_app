@@ -29,6 +29,7 @@ const APP_FILES = [
   './charts.js',
   './format.js',
   './swipe.js',
+  './swipe-rows.js',
   './receipt.js',
   './receipt-view.js',
   './history-view.js',

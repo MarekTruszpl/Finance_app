@@ -73,16 +73,19 @@ export function showTab(name) {
 }
 
 // Свайп пальцем по экрану влево/вправо переключает вкладки (порядок: Ввод, Журнал, Статистика).
-// Не срабатывает, если палец начал движение в поле ввода или списке выбора, у края экрана или двумя пальцами.
+// Слушаем весь экран, а не только блок с содержимым: иначе пустое место под коротким экраном не реагирует.
+// Не срабатывает, если палец начал движение на поле, где вы сейчас печатаете (там жест двигает курсор),
+// у края экрана или двумя пальцами. Остальные поля свайп не блокируют: они растянуты на всю строку формы.
 export function initTabSwipe() {
-  const area = $('screen-main');
   let start = null;
-  area.addEventListener('touchstart', (event) => {
+  document.addEventListener('touchstart', (event) => {
     const touch = event.touches[0];
-    const blocked = event.touches.length > 1 || event.target.closest?.('input, textarea, select, [data-no-swipe]');
+    const active = document.activeElement;
+    const onActiveField = Boolean(active?.matches?.('input, textarea')) && active.contains(event.target);
+    const blocked = $('screen-main').hidden || event.touches.length > 1 || onActiveField || event.target.closest?.('[data-no-swipe]');
     start = blocked ? null : { x: touch.clientX, y: touch.clientY, time: Date.now() };
   }, { passive: true });
-  area.addEventListener('touchend', (event) => {
+  document.addEventListener('touchend', (event) => {
     if (!start) return;
     const touch = event.changedTouches[0];
     const direction = decideScreenSwipe({
@@ -96,7 +99,7 @@ export function initTabSwipe() {
     const target = direction && neighborTab(Object.keys(TABS), currentTab, direction);
     if (target) showTab(target);
   }, { passive: true });
-  area.addEventListener('touchcancel', () => { start = null; }, { passive: true });
+  document.addEventListener('touchcancel', () => { start = null; }, { passive: true });
 }
 
 // Пока открыта клавиатура, нижняя панель прячется: иначе на iPhone она может всплыть над клавиатурой и закрыть поля

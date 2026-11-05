@@ -10,7 +10,7 @@ import {
   niceScale, percentChange, getPeriod, groupRanges, getMileageDriven, summarize,
   cumulativeByDay, byCategory, buildStatsModel, shiftMonth, getHistoryOptions, buildHistory,
 } from './stats.js';
-import { decideSwipe, clampOffset, gestureAxis, ACTION_WIDTH, OPEN_THRESHOLD, FULL_THRESHOLD } from './swipe.js';
+import { decideScreenSwipe, neighborTab } from './swipe.js';
 import { parseReceipt } from './receipt.js';
 import { fitSize, enhanceGray, describeOcrStatus, describeOcrError, OcrError } from './ocr.js';
 
@@ -387,16 +387,20 @@ check('пустая форма: одно поле', describeMissingFields({ amou
 check('пустая форма: ошибка даты — обычные ошибки', describeMissingFields({ date: 'x', mileage: 'y' }) === null);
 check('пустая форма: нет ошибок — null', describeMissingFields({}) === null);
 
-// Свайп
-check('свайп: направление — горизонтальное', gestureAxis(30, 5) === 'x');
-check('свайп: направление — прокрутка', gestureAxis(4, 30) === 'y');
-check('свайп: рано судить о направлении', gestureAxis(3, 2) === null);
-check('свайп: небольшой сдвиг возвращается назад', decideSwipe(30).rest === 0 && decideSwipe(-30).rest === 0 && decideSwipe(30).action === null);
-check('свайп вправо: строка раскрывается под кнопку "Изменить"', decideSwipe(OPEN_THRESHOLD).rest === ACTION_WIDTH && decideSwipe(100).action === null);
-check('свайп влево: строка раскрывается под кнопку "Удалить"', decideSwipe(-OPEN_THRESHOLD).rest === -ACTION_WIDTH && decideSwipe(-100).action === null);
-check('свайп вправо до конца: сразу "изменить"', decideSwipe(FULL_THRESHOLD).action === 'edit' && decideSwipe(FULL_THRESHOLD).rest === 0);
-check('свайп влево до конца: сразу "удалить"', decideSwipe(-FULL_THRESHOLD).action === 'delete' && decideSwipe(-FULL_THRESHOLD).rest === 0);
-check('свайп: строку нельзя утянуть слишком далеко', clampOffset(999) < 200 && clampOffset(-999) > -200 && clampOffset(40) === 40);
+// Свайп экрана: переключение вкладок
+const swipe = (dx, dy = 0, extra = {}) => decideScreenSwipe({ dx, dy, ms: 200, startX: 200, screenWidth: 390, ...extra });
+check('свайп экрана: влево — следующий экран', swipe(-120) === 'next');
+check('свайп экрана: вправо — предыдущий экран', swipe(120) === 'prev');
+check('свайп экрана: короткий жест не считается', swipe(-40) === null && swipe(60) === null);
+check('свайп экрана: прокрутка вниз с лёгким сдвигом в бок не считается', swipe(-90, 120) === null);
+check('свайп экрана: почти горизонтальный жест считается', swipe(-120, 40) === 'next');
+check('свайп экрана: медленное перетаскивание не считается', swipe(-150, 0, { ms: 1200 }) === null);
+check('свайп экрана: от самого края экрана не срабатывает', swipe(120, 0, { startX: 10 }) === null && swipe(-120, 0, { startX: 380 }) === null);
+const tabOrder = ['entry', 'history', 'stats'];
+check('вкладки: влево с «Ввода» — «Журнал»', neighborTab(tabOrder, 'entry', 'next') === 'history');
+check('вкладки: вправо со «Статистики» — «Журнал»', neighborTab(tabOrder, 'stats', 'prev') === 'history');
+check('вкладки: за краем ничего нет', neighborTab(tabOrder, 'stats', 'next') === null && neighborTab(tabOrder, 'entry', 'prev') === null);
+check('вкладки: неизвестная вкладка — ничего', neighborTab(tabOrder, 'x', 'next') === null);
 
 // Разбор чека. Тексты ниже — настоящий вывод распознавания (Tesseract) на зашумлённых снимках
 // выдуманных чеков: с потерянными польскими буквами и опечатками ("zt", "Zaptacono", "Przyktadowa").

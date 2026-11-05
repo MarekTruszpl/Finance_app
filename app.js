@@ -30,7 +30,8 @@ const MULTI_CURRENCY = SECTIONS[SECTION].multiCurrency; // для автомоб
 let records = [];    // записи текущего раздела
 let allRecords = []; // записи всех разделов (для поиска последнего курса)
 let categories = []; // все категории раздела, включая скрытые
-let editingId = null;      // id редактируемой записи; null — обычное добавление
+let editingId = null;         // id редактируемой записи; null — обычное добавление
+let editReturnTab = 'entry';  // куда вернуться после изменения, удаления или отмены: в Журнал, если запись открыли оттуда
 let categoryEditor = null; // { id, used } пока открыт редактор категории; id = null для новой
 let pendingImport = null; // { text, fileName } выбранного CSV, пока открыт предпросмотр
 let importResult = null;   // результат prepareImport для предпросмотра
@@ -142,18 +143,19 @@ function handleSelect(record) {
   refreshCategorySelect(); // чтобы скрытая категория этой записи была в списке
   ui.fillForm(record);
   ui.setEditMode(record);
-  refreshHistory({ rebuildOptions: false }); // подсветить открытую запись в Журнале
   refreshForm();
 }
 
-function exitEditMode() {
+// goBack: вернуться на экран, откуда открыли запись (после "Сохранить", "Отмена" и "Удалить запись")
+function exitEditMode({ goBack = false } = {}) {
   editingId = null;
   ui.setEditMode(null);
   ui.resetAfterSave(); // очистить поля
   ui.setDate(today());
   refreshCategorySelect();
-  refreshHistory({ rebuildOptions: false });
   refreshForm();
+  if (goBack) ui.showTab(editReturnTab);
+  editReturnTab = 'entry';
 }
 
 // ---------- Действия с записями ----------
@@ -191,7 +193,7 @@ async function handleSave() {
     const savedId = await saveRecord(result.record);
     noteChange();
     showReceiptStatus(''); // заметка о распознанном чеке больше не нужна
-    if (isEdit) exitEditMode();
+    if (isEdit) exitEditMode({ goBack: true });
     else ui.resetAfterSave();
     await reload();
     if (isEdit) ui.showToast('Изменения сохранены');
@@ -204,7 +206,7 @@ async function handleSave() {
   }
 }
 
-// Удаление записи: из формы редактирования или свайпом влево в списке
+// Удаление записи (кнопка "Удалить запись" в форме изменения)
 async function deleteRecordById(id, description) {
   const question = `Удалить запись${description ? ` ${description}` : ''}? Это действие нельзя отменить.`;
   if (!ui.confirmAction(question)) return;
@@ -213,7 +215,7 @@ async function deleteRecordById(id, description) {
     await ensureDailySnapshot();
     await deleteRecord(id);
     noteChange();
-    if (editingId === id) exitEditMode(); // удалили ту, что была открыта в форме
+    if (editingId === id) exitEditMode({ goBack: true }); // удалили ту, что была открыта в форме
     await reload();
     ui.showToast('Запись удалена');
   } catch (err) {
@@ -235,13 +237,9 @@ function editSavedRecord(id) {
   }
   const record = records.find((r) => r.id === id);
   if (!record) return;
+  editReturnTab = 'entry'; // открыли из сообщения «Сохранено»: после изменения остаёмся на «Вводе»
   ui.showTab('entry');
   handleSelect(record);
-}
-
-// Свайп влево по записи в Журнале
-function handleDeleteRecord(record) {
-  deleteRecordById(record.id, `от ${record.date.split('-').reverse().join('.')} (${fmt(record.amount)})`);
 }
 
 // Выбрали другую валюту: подставляем её последний курс (его можно изменить)
@@ -642,15 +640,12 @@ function refreshHistory({ rebuildOptions = true } = {}) {
     if (!options.some((o) => o.value === selection)) selection = 'all';
     fillHistoryOptions(options, selection);
   }
-  renderHistory(buildHistory({ records, categories, selection }), {
-    onEdit: handleHistoryEdit,     // нажатие или свайп вправо
-    onDelete: handleDeleteRecord,  // свайп влево
-    selectedId: editingId,
-  });
+  renderHistory(buildHistory({ records, categories, selection }), { onSelect: handleHistoryEdit });
 }
 
-// Нажали на запись в Журнале или провели вправо: открываем её на изменение во вкладке "Ввод"
+// Нажали на запись в Журнале: открываем её на изменение во вкладке "Ввод"; после изменения вернёмся в Журнал
 function handleHistoryEdit(record) {
+  editReturnTab = 'history';
   ui.showTab('entry');
   handleSelect(record);
 }
@@ -732,6 +727,7 @@ function registerServiceWorker() {
   try {
     ui.initTabs();
     ui.initTabBarKeyboardHiding();
+    ui.initTabSwipe();
     ui.initErrorClearing();
     ui.initTheme();
     await seedCategoriesIfEmpty(DEFAULT_CATEGORIES);
@@ -748,7 +744,7 @@ function registerServiceWorker() {
     ui.onFormChange(refreshForm);
     ui.onCurrencyChange(handleCurrencyChange);
     ui.onSubmit(handleSave);
-    ui.onCancelEdit(exitEditMode);
+    ui.onCancelEdit(() => exitEditMode({ goBack: true }));
     ui.onDelete(handleDelete);
 
     // Настройки

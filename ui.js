@@ -26,6 +26,8 @@ function formatMoney(amount, currency = BASE_CURRENCY) {
   }
 }
 
+import { decideScreenSwipe, neighborTab } from './swipe.js';
+
 // ---------- Переключатель "Ввод / Журнал / Статистика" ----------
 const TABS = {
   entry: ['tab-entry', 'view-entry'],
@@ -43,8 +45,20 @@ function updateCameraVisibility() {
 }
 
 // Показать вкладку: 'entry' | 'history' | 'stats'
+// Новый экран выезжает с той стороны, куда ведёт вкладка: вперёд — справа, назад — слева (стили .slide-* в style.css)
+function animatePanel(panel, forward) {
+  panel.classList.remove('slide-forward', 'slide-back');
+  void panel.offsetWidth; // перезапустить анимацию, если она ещё шла
+  panel.classList.add(forward ? 'slide-forward' : 'slide-back');
+  panel.addEventListener('animationend', (event) => {
+    if (event.target === panel) panel.classList.remove('slide-forward', 'slide-back'); // анимации вложенных элементов не в счёт
+  }, { once: true });
+}
+
 export function showTab(name) {
-  if (name !== currentTab) window.scrollTo(0, 0); // панель теперь внизу: новая вкладка открывается сверху
+  const changed = name !== currentTab;
+  const forward = Object.keys(TABS).indexOf(name) > Object.keys(TABS).indexOf(currentTab);
+  if (changed) window.scrollTo(0, 0); // панель теперь внизу: новая вкладка открывается сверху
   currentTab = name;
   updateCameraVisibility();
   updateReminderVisibility();
@@ -53,7 +67,36 @@ export function showTab(name) {
     const active = key === name;
     $(tabId).setAttribute('aria-selected', String(active));
     $(panelId).hidden = !active;
+    if (active && changed) animatePanel($(panelId), forward);
+    if (!active) $(panelId).classList.remove('slide-forward', 'slide-back'); // у скрытой панели анимацию не оставляем
   }
+}
+
+// Свайп пальцем по экрану влево/вправо переключает вкладки (порядок: Ввод, Журнал, Статистика).
+// Не срабатывает, если палец начал движение в поле ввода или списке выбора, у края экрана или двумя пальцами.
+export function initTabSwipe() {
+  const area = $('screen-main');
+  let start = null;
+  area.addEventListener('touchstart', (event) => {
+    const touch = event.touches[0];
+    const blocked = event.touches.length > 1 || event.target.closest?.('input, textarea, select, [data-no-swipe]');
+    start = blocked ? null : { x: touch.clientX, y: touch.clientY, time: Date.now() };
+  }, { passive: true });
+  area.addEventListener('touchend', (event) => {
+    if (!start) return;
+    const touch = event.changedTouches[0];
+    const direction = decideScreenSwipe({
+      dx: touch.clientX - start.x,
+      dy: touch.clientY - start.y,
+      ms: Date.now() - start.time,
+      startX: start.x,
+      screenWidth: window.innerWidth,
+    });
+    start = null;
+    const target = direction && neighborTab(Object.keys(TABS), currentTab, direction);
+    if (target) showTab(target);
+  }, { passive: true });
+  area.addEventListener('touchcancel', () => { start = null; }, { passive: true });
 }
 
 // Пока открыта клавиатура, нижняя панель прячется: иначе на iPhone она может всплыть над клавиатурой и закрыть поля

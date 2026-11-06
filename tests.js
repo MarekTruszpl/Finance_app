@@ -10,7 +10,7 @@ import {
   niceScale, percentChange, getPeriod, groupRanges, getMileageDriven, summarize,
   cumulativeByDay, byCategory, buildStatsModel, shiftMonth, getHistoryOptions, buildHistory,
 } from './stats.js';
-import { decideScreenSwipe, neighborTab } from './swipe.js';
+import { lockAxis, swipeDirection, neighborTab } from './swipe.js';
 import { parseReceipt } from './receipt.js';
 import { fitSize, enhanceGray, describeOcrStatus, describeOcrError, OcrError } from './ocr.js';
 
@@ -388,15 +388,16 @@ check('пустая форма: ошибка даты — обычные оши�
 check('пустая форма: нет ошибок — null', describeMissingFields({}) === null);
 
 // Свайп экрана: переключение вкладок
-const swipe = (dx, dy = 0, extra = {}) => decideScreenSwipe({ dx, dy, ms: 200, startX: 200, screenWidth: 390, ...extra });
-check('свайп экрана: влево — следующий экран', swipe(-120) === 'next');
-check('свайп экрана: вправо — предыдущий экран', swipe(120) === 'prev');
-check('свайп экрана: короткий жест не считается', swipe(-40) === null && swipe(55) === null);
-check('свайп экрана: небольшая диагональ засчитывается', swipe(-100, 60) === 'next' && swipe(100, -60) === 'prev');
-check('свайп экрана: прокрутка вниз с лёгким сдвигом в бок не считается', swipe(-90, 120) === null);
-check('свайп экрана: почти горизонтальный жест считается', swipe(-120, 40) === 'next');
-check('свайп экрана: медленное перетаскивание не считается', swipe(-150, 0, { ms: 1200 }) === null);
-check('свайп экрана: от самого края экрана не срабатывает', swipe(120, 0, { startX: 10 }) === null && swipe(-120, 0, { startX: 380 }) === null);
+check('свайп: рано судить об оси', lockAxis(4, 3) === null);
+check('свайп: горизонтальное движение — ось x', lockAxis(-14, 3) === 'x' && lockAxis(12, 8) === 'x');
+check('свайп: вертикальное движение — прокрутка', lockAxis(4, 15) === 'y' && lockAxis(10, 14) === 'y');
+const dir = (dx, extra = {}) => swipeDirection({ dx, ms: 300, startX: 200, screenWidth: 390, ...extra });
+check('свайп: влево — следующий экран, вправо — предыдущий', dir(-60) === 'next' && dir(60) === 'prev');
+check('свайп: пока палец не прошёл 50 px, экран не переключается', dir(-45) === null && dir(30) === null);
+check('свайп: быстрый короткий щелчок засчитывается только после отпускания', dir(-35, { ms: 60 }) === null && dir(-35, { ms: 60, released: true }) === 'next');
+check('свайп: медленное короткое движение — не щелчок', dir(-35, { ms: 500, released: true }) === null);
+check('свайп: слишком короткий щелчок не считается', dir(-20, { ms: 20, released: true }) === null);
+check('свайп: от самого края экрана не срабатывает', dir(120, { startX: 8 }) === null && dir(-120, { startX: 385 }) === null);
 const tabOrder = ['entry', 'history', 'stats'];
 check('вкладки: влево с «Ввода» — «Журнал»', neighborTab(tabOrder, 'entry', 'next') === 'history');
 check('вкладки: вправо со «Статистики» — «Журнал»', neighborTab(tabOrder, 'stats', 'prev') === 'history');

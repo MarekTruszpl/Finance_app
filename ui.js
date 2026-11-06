@@ -26,7 +26,7 @@ function formatMoney(amount, currency = BASE_CURRENCY) {
   }
 }
 
-import { decideScreenSwipe, neighborTab } from './swipe.js';
+import { lockAxis, swipeDirection, neighborTab } from './swipe.js';
 
 // ---------- Переключатель "Ввод / Журнал / Статистика" ----------
 const TABS = {
@@ -74,32 +74,58 @@ export function showTab(name) {
 
 // Свайп пальцем по экрану влево/вправо переключает вкладки (порядок: Ввод, Журнал, Статистика).
 // Слушаем весь экран, а не только блок с содержимым: иначе пустое место под коротким экраном не реагирует.
+// Экран переключается, как только палец прошёл достаточно по горизонтали, не дожидаясь, пока его отпустят.
 // Не срабатывает, если палец начал движение на поле, где вы сейчас печатаете (там жест двигает курсор),
 // у края экрана или двумя пальцами. Остальные поля свайп не блокируют: они растянуты на всю строку формы.
 export function initTabSwipe() {
-  let start = null;
+  let gesture = null; // { x, y, time, axis: null | 'x', done } пока палец на экране
+
+  const switchTo = (direction) => {
+    const target = direction && neighborTab(Object.keys(TABS), currentTab, direction);
+    if (target) {
+      gesture.done = true; // одно касание — одно переключение
+      showTab(target);
+    }
+  };
+
   document.addEventListener('touchstart', (event) => {
     const touch = event.touches[0];
     const active = document.activeElement;
     const onActiveField = Boolean(active?.matches?.('input, textarea')) && active.contains(event.target);
     const blocked = $('screen-main').hidden || event.touches.length > 1 || onActiveField || event.target.closest?.('[data-no-swipe]');
-    start = blocked ? null : { x: touch.clientX, y: touch.clientY, time: Date.now() };
+    gesture = blocked ? null : { x: touch.clientX, y: touch.clientY, time: Date.now(), axis: null, done: false };
   }, { passive: true });
+
+  document.addEventListener('touchmove', (event) => {
+    if (!gesture || gesture.done) return;
+    const touch = event.touches[0];
+    const dx = touch.clientX - gesture.x;
+    const dy = touch.clientY - gesture.y;
+    gesture.axis ??= lockAxis(dx, dy);
+    if (gesture.axis === 'y') {
+      gesture = null; // это прокрутка
+      return;
+    }
+    if (gesture.axis === 'x') {
+      switchTo(swipeDirection({ dx, ms: Date.now() - gesture.time, startX: gesture.x, screenWidth: window.innerWidth }));
+    }
+  }, { passive: true });
+
   document.addEventListener('touchend', (event) => {
-    if (!start) return;
-    const touch = event.changedTouches[0];
-    const direction = decideScreenSwipe({
-      dx: touch.clientX - start.x,
-      dy: touch.clientY - start.y,
-      ms: Date.now() - start.time,
-      startX: start.x,
-      screenWidth: window.innerWidth,
-    });
-    start = null;
-    const target = direction && neighborTab(Object.keys(TABS), currentTab, direction);
-    if (target) showTab(target);
+    if (gesture && !gesture.done && gesture.axis === 'x') {
+      const touch = event.changedTouches[0];
+      switchTo(swipeDirection({
+        dx: touch.clientX - gesture.x,
+        ms: Date.now() - gesture.time,
+        startX: gesture.x,
+        screenWidth: window.innerWidth,
+        released: true, // палец отпущен: засчитываем и быстрый короткий щелчок
+      }));
+    }
+    gesture = null;
   }, { passive: true });
-  document.addEventListener('touchcancel', () => { start = null; }, { passive: true });
+
+  document.addEventListener('touchcancel', () => { gesture = null; }, { passive: true });
 }
 
 // Пока открыта клавиатура, нижняя панель прячется: иначе на iPhone она может всплыть над клавиатурой и закрыть поля

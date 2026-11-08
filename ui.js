@@ -44,21 +44,52 @@ function updateCameraVisibility() {
   if (el) el.hidden = currentTab !== 'entry' || editingNow;
 }
 
-// Показать вкладку: 'entry' | 'history' | 'stats'
-// Новый экран выезжает с той стороны, куда ведёт вкладка: вперёд — справа, назад — слева (стили .slide-* в style.css)
-function animatePanel(panel, forward) {
-  panel.classList.remove('slide-forward', 'slide-back');
-  void panel.offsetWidth; // перезапустить анимацию, если она ещё шла
-  panel.classList.add(forward ? 'slide-forward' : 'slide-back');
-  panel.addEventListener('animationend', (event) => {
-    if (event.target === panel) panel.classList.remove('slide-forward', 'slide-back'); // анимации вложенных элементов не в счёт
-  }, { once: true });
+// ---- Анимация переключения: оба экрана едут рядом, как страницы (стили .page-* и #panels.sliding в style.css) ----
+const SLIDE_MS = 340; // должно совпадать с длительностью в style.css
+const PAGE_CLASSES = ['page-in-forward', 'page-in-back', 'page-out-forward', 'page-out-back'];
+let finishSlide = null; // функция, мгновенно завершающая идущую анимацию (null, если анимации нет)
+
+const prefersReducedMotion = () => Boolean(window.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
+
+// Запустить показ: старая панель уезжает, новая въезжает. scrollY — где была прокрутка до сброса наверх
+function slidePanels(oldPanel, newPanel, forward, scrollY) {
+  const box = $('panels');
+  oldPanel.hidden = false; // старая панель остаётся видимой до конца анимации
+  // Прокрутку сбрасываем наверх, а уходящая панель сдвигается вверх на столько же, чтобы не «прыгнуть»
+  oldPanel.style.marginTop = `-${scrollY}px`;
+  box.classList.add('sliding');
+  oldPanel.classList.add(forward ? 'page-out-forward' : 'page-out-back');
+  newPanel.classList.add(forward ? 'page-in-forward' : 'page-in-back');
+
+  let timer = null;
+  const finish = () => {
+    clearTimeout(timer);
+    newPanel.removeEventListener('animationend', onEnd);
+    oldPanel.hidden = true;
+    oldPanel.style.marginTop = '';
+    oldPanel.classList.remove(...PAGE_CLASSES);
+    newPanel.classList.remove(...PAGE_CLASSES);
+    box.classList.remove('sliding');
+    finishSlide = null;
+  };
+  const onEnd = (event) => { if (event.target === newPanel) finish(); }; // анимации вложенных элементов не в счёт
+  newPanel.addEventListener('animationend', onEnd);
+  timer = setTimeout(finish, SLIDE_MS + 110); // страховка: если animationend не придёт, экран не зависнет
+  finishSlide = finish;
 }
 
+// Показать вкладку: 'entry' | 'history' | 'stats'
 export function showTab(name) {
-  const changed = name !== currentTab;
-  const forward = Object.keys(TABS).indexOf(name) > Object.keys(TABS).indexOf(currentTab);
-  if (changed) window.scrollTo(0, 0); // панель теперь внизу: новая вкладка открывается сверху
+  const keys = Object.keys(TABS);
+  const previous = currentTab;
+  const changed = name !== previous;
+  const forward = keys.indexOf(name) > keys.indexOf(previous);
+  const scrollY = Math.round(window.scrollY || 0);
+  // Анимируем только настоящую смену вкладки на главном экране и только если движение не отключено в системе
+  const animate = changed && !$('screen-main').hidden && !prefersReducedMotion();
+
+  if (changed && finishSlide) finishSlide(); // быстрое повторное переключение: прежняя анимация завершается сразу
+  if (changed) window.scrollTo(0, 0); // новая вкладка открывается сверху
   currentTab = name;
   updateCameraVisibility();
   updateReminderVisibility();
@@ -66,10 +97,10 @@ export function showTab(name) {
   for (const [key, [tabId, panelId]] of Object.entries(TABS)) {
     const active = key === name;
     $(tabId).setAttribute('aria-selected', String(active));
+    if (!changed && finishSlide) continue; // повторный вызов для той же вкладки не должен ломать идущую анимацию
     $(panelId).hidden = !active;
-    if (active && changed) animatePanel($(panelId), forward);
-    if (!active) $(panelId).classList.remove('slide-forward', 'slide-back'); // у скрытой панели анимацию не оставляем
   }
+  if (animate) slidePanels($(TABS[previous][1]), $(TABS[name][1]), forward, scrollY);
 }
 
 // Свайп пальцем по экрану влево/вправо переключает вкладки (порядок: Ввод, Журнал, Статистика).

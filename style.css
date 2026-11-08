@@ -82,7 +82,6 @@ main {
   max-width: 520px;
   margin: 0 auto;
   padding: 12px max(16px, env(safe-area-inset-right)) calc(88px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left)); /* снизу место под панель вкладок */
-  overflow-x: clip; /* выезжающий экран не должен давать горизонтальную прокрутку */
 }
 
 /* ---------- Сгруппированный список ---------- */
@@ -639,16 +638,22 @@ body::before {
 .tab[aria-selected="true"] svg { stroke-width: 2.2; }
 
 /* ---------- Анимация переключения экранов ---------- */
-/* Экран становится видимым почти сразу (к 35% времени), дальше доезжает до места: переключение не ощущается задержкой */
-@keyframes slide-from-right { 0% { opacity: 0; transform: translateX(24px); } 35% { opacity: 1; } 100% { opacity: 1; transform: none; } }
-@keyframes slide-from-left  { 0% { opacity: 0; transform: translateX(-24px); } 35% { opacity: 1; } 100% { opacity: 1; transform: none; } }
-.slide-forward { animation: slide-from-right 220ms cubic-bezier(0.22, 1, 0.36, 1); }
-.slide-back { animation: slide-from-left 220ms cubic-bezier(0.22, 1, 0.36, 1); }
+/* На время переключения обе панели стоят в одной ячейке сетки и едут рядом, как страницы.
+   Сдвиг = ширина панели + 32px (отступы по бокам), поэтому уходящая панель целиком выезжает за край экрана. */
+#panels.sliding { display: grid; grid-template-columns: minmax(0, 1fr); }
+#panels.sliding > section { grid-area: 1 / 1; will-change: transform; }
+@keyframes page-in-from-right { from { transform: translateX(calc(100% + 32px)); } to { transform: none; } }
+@keyframes page-in-from-left  { from { transform: translateX(calc(-100% - 32px)); } to { transform: none; } }
+@keyframes page-out-to-left   { from { transform: none; } to { transform: translateX(calc(-100% - 32px)); } }
+@keyframes page-out-to-right  { from { transform: none; } to { transform: translateX(calc(100% + 32px)); } }
+.page-in-forward  { animation: page-in-from-right 340ms cubic-bezier(0.3, 0.15, 0.1, 1) both; }
+.page-in-back     { animation: page-in-from-left  340ms cubic-bezier(0.3, 0.15, 0.1, 1) both; }
+.page-out-forward { animation: page-out-to-left   340ms cubic-bezier(0.3, 0.15, 0.1, 1) both; pointer-events: none; }
+.page-out-back    { animation: page-out-to-right  340ms cubic-bezier(0.3, 0.15, 0.1, 1) both; pointer-events: none; }
 .tab { transition: color 200ms ease; }
 .tab svg { transition: transform 250ms cubic-bezier(0.22, 1, 0.36, 1), stroke-width 200ms ease; }
 .tab[aria-selected="true"] svg { transform: scale(1.08); }
 @media (prefers-reduced-motion: reduce) {
-  .slide-forward, .slide-back { animation: none; }
   .tab, .tab svg { transition: none; }
 }
 
@@ -656,3 +661,4 @@ body::before {
    выше на высоту строки состояния (47 pt). Делаем страницу всегда чуть выше экрана: тогда панель везде внизу.
    Запас в 60px спрятан под самой панелью, при прокрутке вы увидите только пустой фон. */
 #screen-main { min-height: calc(100vh + 60px); min-height: calc(100dvh + 60px); }
+#screen-main { overflow-x: clip; } /* выезжающий экран обрезается по краю телефона и не даёт горизонтальной прокрутки */

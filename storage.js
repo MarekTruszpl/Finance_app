@@ -19,6 +19,16 @@ db.version(2).stores({
   snapshots:  '++id, createdAt',
 });
 
+// Версия 3: поездки и их расходы. Лежат отдельно от records: у записей автомобиля обязателен пробег,
+// и вся автомобильная логика (пробег, статистика, CSV) не должна видеть расходы поездок.
+db.version(3).stores({
+  records:       '++id, section, category_id, date',
+  categories:    '++id, section',
+  snapshots:     '++id, createdAt',
+  trips:         '++id, date_from',
+  trip_expenses: '++id, trip_id, date',
+});
+
 // ---------- Записи ----------
 
 // Все записи раздела (например 'car'), новые сверху.
@@ -56,6 +66,13 @@ export async function saveCategory(category) {
   return db.categories.put(category);
 }
 
+// Добавить начальные категории раздела, только если в этом разделе их ещё нет
+// (раздел поездок появился позже автомобиля, поэтому общая проверка "таблица пуста" не подходит).
+export async function seedSectionCategoriesIfMissing(section, defaults) {
+  const count = await db.categories.where('section').equals(section).count();
+  if (count === 0) await db.categories.bulkAdd(defaults.map((d) => ({ ...d }))); // копии: Dexie дописывает id в переданные объекты
+}
+
 // Заполнить категории начальными значениями, только если таблица пуста.
 export async function seedCategoriesIfEmpty(defaults) {
   const count = await db.categories.count();
@@ -81,12 +98,17 @@ export async function getAllCategories() {
 
 // Полностью заменить данные содержимым резервной копии (всё или ничего: одной транзакцией).
 // Записи и категории сохраняются с прежними id, поэтому связи между ними не теряются.
-export async function replaceAllData({ categories, records }) {
-  await db.transaction('rw', db.records, db.categories, async () => {
+// Копии, сделанные до появления поездок, их не содержат: тогда поездки станут пустыми.
+export async function replaceAllData({ categories, records, trips = [], tripExpenses = [] }) {
+  await db.transaction('rw', db.records, db.categories, db.trips, db.trip_expenses, async () => {
     await db.records.clear();
     await db.categories.clear();
+    await db.trips.clear();
+    await db.trip_expenses.clear();
     await db.categories.bulkAdd(categories);
     await db.records.bulkAdd(records);
+    await db.trips.bulkAdd(trips);
+    await db.trip_expenses.bulkAdd(tripExpenses);
   });
 }
 
@@ -114,6 +136,37 @@ export async function addRecords(records) {
   return db.records.bulkAdd(records);
 }
 
+// ---------- Поездки ----------
+
+export async function getTrips() {
+  return db.trips.toArray();
+}
+
+export async function getTripExpenses() {
+  return db.trip_expenses.toArray();
+}
+
+// Добавить поездку (без id) или обновить (с id). Возвращает id.
+export async function saveTrip(trip) {
+  return db.trips.put(trip);
+}
+
+// Удаление поездки уносит и все её расходы (одной транзакцией: всё или ничего)
+export async function deleteTrip(id) {
+  await db.transaction('rw', db.trips, db.trip_expenses, async () => {
+    await db.trip_expenses.where('trip_id').equals(id).delete();
+    await db.trips.delete(id);
+  });
+}
+
+export async function saveTripExpense(expense) {
+  return db.trip_expenses.put(expense);
+}
+
+export async function deleteTripExpense(id) {
+  return db.trip_expenses.delete(id);
+}
+
 // ---------- Постоянное хранение ----------
 
 // Просим браузер не очищать данные сайта сами. Возвращает true / false,
@@ -133,13 +186,15 @@ const MAX_SNAPSHOTS = 10; // храним столько последних
 
 // kind: 'daily' — копия в начале дня, 'safety' — копия перед опасным действием
 export async function saveSnapshot(reason, kind = 'safety') {
-  const [categories, records] = await Promise.all([db.categories.toArray(), db.records.toArray()]);
+  const [categories, records, trips, tripExpenses] = await Promise.all([
+    db.categories.toArray(), db.records.toArray(), db.trips.toArray(), db.trip_expenses.toArray(),
+  ]);
   await db.snapshots.add({
     createdAt: new Date().toISOString(),
     reason,
     kind,
-    counts: { records: records.length, categories: categories.length },
-    data: { categories, records },
+    counts: { records: records.length, categories: categories.length, trips: trips.length, tripExpenses: tripExpenses.length },
+    data: { categories, records, trips, tripExpenses },
   });
   // Удаляем самые старые, если копий стало больше лимита
   const keys = await db.snapshots.orderBy('createdAt').primaryKeys(); // от старых к новым

@@ -27,7 +27,7 @@
   <div id="screen-main">
     <header class="large-title">
       <div class="title-row">
-        <h1>Автомобиль</h1>
+        <h1 id="app-title">Автомобиль</h1>
         <div class="title-actions">
           <button type="button" id="receipt-camera" class="icon-button" aria-label="Фото чека">
             <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -202,6 +202,124 @@
           </div>
         </div>
       </section>
+
+      <!-- ===== Поездки: список -> поездка -> форма поездки / форма расхода (показывается одно из четырёх) ===== -->
+      <section id="view-trips" role="tabpanel" aria-labelledby="tab-trips" hidden>
+
+        <!-- Список поездок -->
+        <div id="trips-screen-list">
+          <button type="button" id="trip-new" class="primary">Новая поездка</button>
+          <h2>Поездки</h2>
+          <ul id="trips-list" class="group records"></ul>
+          <p class="footer" id="trips-note"></p>
+        </div>
+
+        <!-- Одна поездка: итог, категории, расходы -->
+        <div id="trips-screen-trip" hidden>
+          <button type="button" id="trip-back" class="nav-back">
+            <svg viewBox="0 0 10 18" width="10" height="18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8.5 1.5 1.5 9l7 7.5"/></svg>
+            Поездки
+          </button>
+          <div class="trip-hero">
+            <div class="trip-name" id="trip-title"></div>
+            <div class="trip-dates" id="trip-dates"></div>
+            <div class="trip-total" id="trip-total"></div>
+            <div class="trip-sub" id="trip-sub"></div>
+          </div>
+          <button type="button" id="expense-new" class="primary">Добавить расход</button>
+          <div id="trip-categories-block">
+            <h2>По категориям</h2>
+            <ul id="trip-categories" class="group records"></ul>
+          </div>
+          <h2>Расходы</h2>
+          <ul id="trip-expenses" class="group records"></ul>
+          <button type="button" id="trip-edit" class="secondary">Изменить поездку</button>
+        </div>
+
+        <!-- Форма поездки (новая или изменение) -->
+        <form id="trip-form" data-no-swipe novalidate hidden>
+          <p class="edit-banner" id="tf-banner"></p>
+          <div class="group">
+            <div class="row">
+              <label for="tf-name">Название</label>
+              <input type="text" id="tf-name" maxlength="60" placeholder="Например, Берлин" autocomplete="off" aria-describedby="error-tf-name">
+              <p class="error" id="error-tf-name"></p>
+            </div>
+            <div class="row">
+              <label for="tf-date-from">С</label>
+              <input type="date" id="tf-date-from" aria-describedby="error-tf-date-from">
+              <p class="error" id="error-tf-date-from"></p>
+            </div>
+            <div class="row">
+              <label for="tf-date-to">По</label>
+              <input type="date" id="tf-date-to" aria-describedby="error-tf-date-to">
+              <p class="error" id="error-tf-date-to"></p>
+            </div>
+          </div>
+          <div class="group">
+            <div class="row">
+              <label for="tf-currency">Валюта</label>
+              <select id="tf-currency" aria-describedby="error-tf-currency"></select>
+              <p class="error" id="error-tf-currency"></p>
+            </div>
+            <div class="row" id="field-tf-rate" hidden>
+              <label for="tf-rate" id="tf-rate-label">Курс</label>
+              <input type="text" id="tf-rate" inputmode="decimal" placeholder="4,3" autocomplete="off" aria-describedby="tf-rate-hint error-tf-rate">
+              <p class="hint" id="tf-rate-hint"></p>
+              <p class="error" id="error-tf-rate"></p>
+            </div>
+          </div>
+          <p class="footer" id="tf-footer"></p>
+          <div class="form-actions">
+            <button type="submit" id="tf-save" class="primary">Сохранить</button>
+          </div>
+          <button type="button" id="tf-cancel" class="secondary">Отмена</button>
+          <button type="button" id="tf-delete" class="secondary destructive" hidden>Удалить поездку</button>
+        </form>
+
+        <!-- Форма расхода (новый или изменение) -->
+        <form id="expense-form" data-no-swipe novalidate hidden>
+          <p class="edit-banner" id="ef-banner"></p>
+          <div class="group">
+            <div class="row">
+              <label for="ef-date">Дата</label>
+              <input type="date" id="ef-date" aria-describedby="error-ef-date">
+              <p class="error" id="error-ef-date"></p>
+            </div>
+            <div class="row">
+              <label for="ef-category">Категория</label>
+              <select id="ef-category" aria-describedby="error-ef-category"></select>
+              <p class="error" id="error-ef-category"></p>
+            </div>
+          </div>
+          <div class="group">
+            <div class="row">
+              <label for="ef-amount">Сумма</label>
+              <input type="text" id="ef-amount" inputmode="decimal" placeholder="0" autocomplete="off" aria-describedby="ef-preview error-ef-amount">
+              <select id="ef-currency" aria-label="Валюта" aria-describedby="error-ef-currency"></select>
+              <p class="hint ef-preview" id="ef-preview"></p>
+              <p class="error" id="error-ef-amount"></p>
+              <p class="error" id="error-ef-currency"></p>
+            </div>
+            <div class="row" id="field-ef-rate" hidden>
+              <label for="ef-rate">Курс</label>
+              <input type="text" id="ef-rate" inputmode="decimal" placeholder="4,3" autocomplete="off" aria-describedby="ef-rate-hint error-ef-rate">
+              <p class="hint" id="ef-rate-hint"></p>
+              <p class="error" id="error-ef-rate"></p>
+            </div>
+            <div class="row">
+              <label for="ef-comment">Комментарий</label>
+              <input type="text" id="ef-comment" maxlength="200" placeholder="Необязательно" autocomplete="off" aria-describedby="error-ef-comment">
+              <p class="error" id="error-ef-comment"></p>
+            </div>
+          </div>
+          <div class="form-actions">
+            <button type="submit" id="ef-save" class="primary">Сохранить</button>
+          </div>
+          <button type="button" id="ef-cancel" class="secondary">Отмена</button>
+          <button type="button" id="ef-delete" class="secondary destructive" hidden>Удалить расход</button>
+        </form>
+      </section>
       </div>
     </main>
 
@@ -227,6 +345,12 @@
             <rect x="4" y="12" width="4" height="8" rx="1"/>
             <rect x="10" y="4" width="4" height="16" rx="1"/>
             <rect x="16" y="9" width="4" height="11" rx="1"/>
+          </svg>
+        </button>
+        <button type="button" class="tab" role="tab" id="tab-trips" aria-controls="view-trips" aria-selected="false" aria-label="Поездки" title="Поездки">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="3" y="7" width="18" height="13" rx="2"/>
+            <path d="M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2M3 13h18"/>
           </svg>
         </button>
       </div>

@@ -14,6 +14,16 @@ export const DEFAULT_CATEGORIES = [
   { section: 'car', name: 'Прочее',                  kind: 'regular' },
 ];
 
+// Начальные категории раздела "travel" (расходы поездок). Все обычные: литров и пробега у поездок нет.
+export const DEFAULT_TRAVEL_CATEGORIES = [
+  { section: 'travel', name: 'Жильё',        kind: 'regular' },
+  { section: 'travel', name: 'Транспорт',    kind: 'regular' },
+  { section: 'travel', name: 'Еда',          kind: 'regular' },
+  { section: 'travel', name: 'Развлечения',  kind: 'regular' },
+  { section: 'travel', name: 'Покупки',      kind: 'regular' },
+  { section: 'travel', name: 'Прочее',       kind: 'regular' },
+];
+
 // Валюта, в которой приложение показывает итоги (код ISO 4217).
 export const BASE_CURRENCY = 'PLN';
 
@@ -39,4 +49,5 @@ export const CURRENCIES = [
 
 // Версия формата данных в резервной копии. Увеличиваем, когда меняется структура записей:
 // тогда приложение сможет прочитать и преобразовать старые копии.
-export const SCHEMA_VERSION = 1;
+// 1 — записи и категории; 2 — добавились поездки (trips) и их расходы (tripExpenses).
+export const SCHEMA_VERSION = 2;

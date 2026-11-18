@@ -250,13 +250,15 @@ export function getLastMileageForGroup(records, categories, { fuel }) {
 
 // ---------- Резервная копия (JSON) ----------
 
-export function buildBackup(categories, records, now = new Date()) {
+export function buildBackup(categories, records, now = new Date(), { trips = [], tripExpenses = [] } = {}) {
   return {
     app: 'finance-app',
     schemaVersion: SCHEMA_VERSION,
     exportedAt: now.toISOString(),
     categories,
     records,
+    trips,
+    tripExpenses,
   };
 }
 
@@ -305,6 +307,39 @@ export function validateBackup(data, { requiredSection = null } = {}) {
     else problems.push(`запись №${i + 1}`);
   });
 
+  // Поездки и их расходы (в копиях формата 1 их нет — это нормально)
+  const trips = data.trips ?? [];
+  const tripExpenses = data.tripExpenses ?? [];
+  if (!Array.isArray(trips) || !Array.isArray(tripExpenses)) {
+    problems.push('списки поездок');
+  } else {
+    const tripIds = new Set();
+    trips.forEach((t, i) => {
+      const ok = Boolean(t)
+        && Number.isInteger(t.id) && !tripIds.has(t.id)
+        && typeof t.name === 'string' && t.name.trim() !== ''
+        && typeof t.date_from === 'string' && isRealDate(t.date_from)
+        && typeof t.date_to === 'string' && isRealDate(t.date_to) && t.date_to >= t.date_from
+        && typeof t.currency === 'string' && t.currency !== ''
+        && Number.isFinite(t.rate) && t.rate > 0;
+      if (ok) tripIds.add(t.id);
+      else problems.push(`поездка №${i + 1}`);
+    });
+    const expenseIds = new Set();
+    tripExpenses.forEach((e, i) => {
+      const ok = Boolean(e)
+        && Number.isInteger(e.id) && !expenseIds.has(e.id)
+        && tripIds.has(e.trip_id)
+        && typeof e.date === 'string' && isRealDate(e.date)
+        && categoryIds.has(e.category_id)
+        && Number.isFinite(e.amount) && e.amount > 0
+        && Number.isFinite(e.rate) && e.rate > 0
+        && Number.isFinite(e.amount_base) && e.amount_base > 0;
+      if (ok) expenseIds.add(e.id);
+      else problems.push(`расход поездки №${i + 1}`);
+    });
+  }
+
   if (problems.length > 0) {
     const shown = problems.slice(0, 5).join(', ');
     const rest = problems.length > 5 ? ` и ещё ${problems.length - 5}` : '';
@@ -319,7 +354,12 @@ export function validateBackup(data, { requiredSection = null } = {}) {
   return {
     ok: errors.length === 0,
     errors,
-    summary: { records: data.records.length, categories: data.categories.length },
+    summary: {
+      records: data.records.length,
+      categories: data.categories.length,
+      trips: Array.isArray(trips) ? trips.length : 0,
+      tripExpenses: Array.isArray(tripExpenses) ? tripExpenses.length : 0,
+    },
   };
 }
 

@@ -12,6 +12,10 @@ import {
 } from './stats.js';
 import { lockAxis, swipeDirection, neighborTab } from './swipe.js';
 import { parseReceipt } from './receipt.js';
+import {
+  validateTrip, validateTripExpense, defaultRateFor, defaultExpenseDate, tripDays, summarizeTrip,
+  buildTripList, sortExpenses, formatTripDates, previewBase,
+} from './trips.js';
 import { fitSize, enhanceGray, describeOcrStatus, describeOcrError, OcrError } from './ocr.js';
 
 const results = [];
@@ -168,7 +172,7 @@ const bRecs = [
   { id: 3, section: 'car', date: '2026-02-11', category_id: 2, mileage: 99100, amount: 20, liters: null, comment: '=1+1' },
 ];
 const backup = buildBackup(bCats, bRecs, new Date('2026-10-31T10:00:00Z'));
-check('копия: служебные поля', backup.app === 'finance-app' && backup.schemaVersion === 1 && backup.exportedAt === '2026-10-31T10:00:00.000Z');
+check('копия: служебные поля', backup.app === 'finance-app' && backup.schemaVersion === 2 && backup.exportedAt === '2026-10-31T10:00:00.000Z');
 check('копия: после JSON проходит проверку', validateBackup(JSON.parse(JSON.stringify(backup)), { requiredSection: 'car' }).ok);
 check('копия: сводка', validateBackup(backup).summary.records === 3);
 check('копия: чужой файл -> ошибка', !validateBackup({ hello: 1 }).ok);
@@ -547,6 +551,96 @@ check('сверка: расхождение без позиций — берёт
 })());
 
 // Вывод
+
+// ---------- Поездки ----------
+const tripOk = { name: ' Берлин ', date_from: '2026-10-12', date_to: '2026-10-18', currency: 'EUR', rate: '4,32' };
+const tv = validateTrip(tripOk);
+check('поездка: верная проходит, имя без пробелов, курс числом', tv.ok && tv.trip.name === 'Берлин' && tv.trip.rate === 4.32);
+check('поездка: id сохраняется при изменении', validateTrip({ ...tripOk, id: 7 }).trip.id === 7);
+check('поездка: пустое имя -> ошибка', validateTrip({ ...tripOk, name: '  ' }).errors.name);
+check('поездка: имя длиннее 60 -> ошибка', validateTrip({ ...tripOk, name: 'а'.repeat(61) }).errors.name);
+check('поездка: нет дат -> ошибки', validateTrip({ ...tripOk, date_from: '', date_to: '' }).errors.date_from && validateTrip({ ...tripOk, date_to: '' }).errors.date_to);
+check('поездка: 30 февраля -> ошибка', validateTrip({ ...tripOk, date_from: '2026-02-30' }).errors.date_from);
+check('поездка: конец раньше начала -> ошибка', validateTrip({ ...tripOk, date_to: '2026-10-01' }).errors.date_to);
+check('поездка: один день допустим', validateTrip({ ...tripOk, date_to: '2026-10-12' }).ok);
+check('поездка: чужая валюта -> ошибка', validateTrip({ ...tripOk, currency: 'XXX' }).errors.currency);
+check('поездка: валюта не злотые без курса -> ошибка', validateTrip({ ...tripOk, rate: '' }).errors.rate);
+check('поездка: нулевой курс -> ошибка', validateTrip({ ...tripOk, rate: '0' }).errors.rate);
+check('поездка: в злотых курс 1 и вводить не нужно', validateTrip({ ...tripOk, currency: 'PLN', rate: '' }).trip.rate === 1);
+
+const trip = { id: 1, name: 'Берлин', date_from: '2026-10-12', date_to: '2026-10-18', currency: 'EUR', rate: 4.32 };
+const tCat = { id: 10, section: 'travel', name: 'Еда', kind: 'regular' };
+const eOk = { date: '2026-10-13', amount: '45', currency: 'EUR', rate: '4,32', comment: ' кафе ' };
+const ev = validateTripExpense(eOk, tCat, trip);
+check('расход: верный проходит', ev.ok && ev.expense.trip_id === 1 && ev.expense.category_id === 10 && ev.expense.comment === 'кафе');
+check('расход: сумма в злотых по курсу (45 × 4,32 = 194,40)', ev.expense.amount_base === 194.4 && ev.expense.amount === 45);
+check('расход: в злотых курс 1, amount_base = amount', validateTripExpense({ ...eOk, currency: 'PLN', rate: '' }, tCat, trip).expense.amount_base === 45);
+check('расход: id сохраняется', validateTripExpense({ ...eOk, id: 5 }, tCat, trip).expense.id === 5);
+check('расход: без категории -> ошибка', validateTripExpense(eOk, undefined, trip).errors.category);
+check('расход: без поездки -> ошибка', validateTripExpense(eOk, tCat, undefined).errors.trip);
+check('расход: пустая сумма и нулевая -> ошибки', validateTripExpense({ ...eOk, amount: '' }, tCat, trip).errors.amount && validateTripExpense({ ...eOk, amount: '0' }, tCat, trip).errors.amount);
+check('расход: будущая дата -> ошибка', validateTripExpense({ ...eOk, date: '2999-01-01' }, tCat, trip).errors.date);
+check('расход: валюта не злотые без курса -> ошибка', validateTripExpense({ ...eOk, rate: '' }, tCat, trip).errors.rate);
+check('расход: комментарий длиннее 200 -> ошибка', validateTripExpense({ ...eOk, comment: 'я'.repeat(201) }, tCat, trip).errors.comment);
+check('расход: округление копеек (10,03 × 4,3333 = 43,46)', validateTripExpense({ ...eOk, amount: '10,03', rate: '4,3333' }, tCat, trip).expense.amount_base === 43.46);
+
+check('курс по умолчанию: злотые = 1', defaultRateFor('PLN', trip, []).rate === 1);
+check('курс по умолчанию: валюта поездки -> курс поездки', defaultRateFor('EUR', trip, []).source === 'trip' && defaultRateFor('EUR', trip, []).rate === 4.32);
+const prior = [{ id: 1, currency: 'USD', rate: 3.9, date: '2026-05-01' }, { id: 2, currency: 'USD', rate: 4.0, date: '2026-06-01' }];
+check('курс по умолчанию: иная валюта -> последний использованный', defaultRateFor('USD', trip, prior).rate === 4.0 && defaultRateFor('USD', trip, prior).source === 'last');
+check('курс по умолчанию: курса не было -> null', defaultRateFor('GBP', trip, prior) === null);
+check('дата расхода: во время поездки — сегодня', defaultExpenseDate(trip, '2026-10-14') === '2026-10-14');
+check('дата расхода: после поездки — её последний день', defaultExpenseDate(trip, '2026-11-18') === '2026-10-18');
+check('дата расхода: до поездки — сегодня', defaultExpenseDate(trip, '2026-10-01') === '2026-10-01');
+
+check('дней в поездке включительно: 12–18 = 7', tripDays(trip) === 7);
+check('дней в поездке: один день = 1', tripDays({ date_from: '2026-10-12', date_to: '2026-10-12' }) === 1);
+check('дней в поездке: через смену времени (25–28 окт) = 4', tripDays({ date_from: '2026-10-25', date_to: '2026-10-28' }) === 4);
+check('дней в поездке: через границу года', tripDays({ date_from: '2026-12-30', date_to: '2027-01-02' }) === 4);
+
+const tExp = [
+  { id: 1, trip_id: 1, date: '2026-10-12', category_id: 10, amount_base: 100.1 },
+  { id: 2, trip_id: 1, date: '2026-10-13', category_id: 11, amount_base: 300.2 },
+  { id: 3, trip_id: 1, date: '2026-10-13', category_id: 10, amount_base: 49.9 },
+  { id: 4, trip_id: 2, date: '2026-09-01', category_id: 10, amount_base: 999 },
+];
+const sm = summarizeTrip(trip, tExp.filter((e) => e.trip_id === 1), [tCat, { id: 11, name: 'Жильё' }]);
+check('итоги: сумма и число расходов', sm.total === 450.2 && sm.count === 3);
+check('итоги: категории от большей суммы к меньшей', sm.byCategory[0].name === 'Жильё' && sm.byCategory[0].total === 300.2 && sm.byCategory[1].total === 150);
+check('итоги: доли в сумме дают 1', Math.abs(sm.byCategory.reduce((a, c) => a + c.share, 0) - 1) < 1e-9);
+check('итоги: в день (450,2 / 7)', sm.perDay === 64.31);
+check('итоги: пустая поездка', summarizeTrip(trip, [], []).total === 0 && summarizeTrip(trip, [], []).byCategory.length === 0);
+check('итоги: неизвестная категория подписывается', summarizeTrip(trip, [{ id: 9, category_id: 99, amount_base: 5 }], []).byCategory[0].name === 'Без категории');
+
+const list = buildTripList([trip, { id: 2, name: 'Прага', date_from: '2026-09-01', date_to: '2026-09-03', currency: 'CZK', rate: 0.18 }, { id: 3, name: 'Рим', date_from: '2026-11-01', date_to: '2026-11-05', currency: 'EUR', rate: 4.3 }], tExp);
+check('список: новые поездки сверху', list.map((i) => i.trip.name).join() === 'Рим,Берлин,Прага');
+check('список: суммы только своих расходов', list[1].total === 450.2 && list[2].total === 999 && list[0].total === 0 && list[0].count === 0);
+check('расходы: новые сверху, при равной дате — позднее добавленные', sortExpenses(tExp).map((e) => e.id).join() === '3,2,1,4');
+
+check('даты: в одном месяце', formatTripDates('2026-10-12', '2026-10-18') === '12–18 окт 2026');
+check('даты: через месяц', formatTripDates('2026-10-28', '2026-11-03') === '28 окт – 3 ноя 2026');
+check('даты: через год', formatTripDates('2026-12-28', '2027-01-03') === '28 дек 2026 – 3 янв 2027');
+check('даты: один день', formatTripDates('2026-10-12', '2026-10-12') === '12 окт 2026');
+check('предпросмотр: 45 EUR по 4,32 = 194,4', previewBase('45', '4,32', 'EUR') === 194.4);
+check('предпросмотр: в злотых курс не нужен', previewBase('45', '', 'PLN') === 45);
+check('предпросмотр: нет курса или суммы -> null', previewBase('45', '', 'EUR') === null && previewBase('', '4,3', 'EUR') === null && previewBase('abc', '4,3', 'EUR') === null);
+
+// Копия с поездками
+const tBackupCats = [{ id: 1, section: 'car', name: 'Топливо', kind: 'fuel' }, { id: 10, section: 'travel', name: 'Еда', kind: 'regular' }];
+const tBackup = buildBackup(tBackupCats, [], new Date('2026-11-18T10:00:00Z'), {
+  trips: [{ ...trip }],
+  tripExpenses: [{ id: 1, trip_id: 1, date: '2026-10-13', category_id: 10, amount: 45, currency: 'EUR', rate: 4.32, amount_base: 194.4, comment: '' }],
+});
+const tCheck = validateBackup(JSON.parse(JSON.stringify(tBackup)), { requiredSection: 'car' });
+check('копия с поездками: проходит проверку и считает их', tCheck.ok && tCheck.summary.trips === 1 && tCheck.summary.tripExpenses === 1);
+check('копия формата 1 (без поездок) всё ещё читается', validateBackup({ ...backup, schemaVersion: 1, trips: undefined, tripExpenses: undefined }, { requiredSection: 'car' }).ok);
+check('копия: расход с неизвестной поездкой -> ошибка', !validateBackup({ ...tBackup, tripExpenses: [{ ...tBackup.tripExpenses[0], trip_id: 99 }] }).ok);
+check('копия: расход с неизвестной категорией -> ошибка', !validateBackup({ ...tBackup, tripExpenses: [{ ...tBackup.tripExpenses[0], category_id: 99 }] }).ok);
+check('копия: поездка с концом раньше начала -> ошибка', !validateBackup({ ...tBackup, trips: [{ ...trip, date_to: '2026-10-01' }] }).ok);
+check('копия: повтор id поездки -> ошибка', !validateBackup({ ...tBackup, trips: [trip, trip] }).ok);
+check('копия: расход с нулевым курсом -> ошибка', !validateBackup({ ...tBackup, tripExpenses: [{ ...tBackup.tripExpenses[0], rate: 0 }] }).ok);
+check('копия: поездки не списком -> ошибка', !validateBackup({ ...tBackup, trips: 'x' }).ok);
+
 const failed = results.filter((r) => !r.ok);
 console.log(`Тесты: ${results.length - failed.length} из ${results.length} пройдено`);
 failed.forEach((r) => console.error('ПРОВАЛ:', r.name));

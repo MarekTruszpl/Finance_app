@@ -33,10 +33,18 @@ const TABS = {
   entry: ['tab-entry', 'view-entry'],
   history: ['tab-history', 'view-history'],
   stats: ['tab-stats', 'view-stats'],
+  trips: ['tab-trips', 'view-trips'],
 };
 
 let currentTab = 'entry';
 let editingNow = false;
+
+// Заголовок страницы: на вкладке поездок — «Путешествия» и без строки про пробег
+function updateHeader() {
+  const trips = currentTab === 'trips';
+  $('app-title').textContent = trips ? 'Путешествия' : 'Автомобиль';
+  $('header-mileage').hidden = trips;
+}
 
 // Значок камеры (фото чека) нужен только на вкладке "Ввод" и только для новой записи
 function updateCameraVisibility() {
@@ -93,6 +101,7 @@ export function showTab(name) {
   currentTab = name;
   updateCameraVisibility();
   updateReminderVisibility();
+  updateHeader();
   if (name !== 'entry') showErrors({}); // красные подсказки не должны «залипать» после ухода с вкладки
   for (const [key, [tabId, panelId]] of Object.entries(TABS)) {
     const active = key === name;

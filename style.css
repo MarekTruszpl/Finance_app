@@ -662,3 +662,12 @@ body::before {
    Запас в 60px спрятан под самой панелью, при прокрутке вы увидите только пустой фон. */
 #screen-main { min-height: calc(100vh + 60px); min-height: calc(100dvh + 60px); }
 #screen-main { overflow-x: clip; } /* выезжающий экран обрезается по краю телефона и не даёт горизонтальной прокрутки */
+
+/* ---------- Поездки ---------- */
+.trip-hero { margin: 4px 4px 16px; }
+.trip-name { font-size: 22px; font-weight: 700; overflow-wrap: anywhere; }
+.trip-dates { font-size: 15px; color: var(--secondary); }
+.trip-total { margin-top: 10px; font-size: 40px; font-weight: 700; line-height: 1.1; overflow-wrap: anywhere; }
+.trip-sub { margin-top: 4px; font-size: 15px; color: var(--secondary); }
+#trips-screen-trip button.secondary { margin-top: 20px; }
+.ef-preview { font-weight: 600; color: var(--tint); }

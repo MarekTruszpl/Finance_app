@@ -22,6 +22,7 @@ import {
   showReceiptStatus, setReceiptBusy, toggleReceiptDebug, onReceiptPhoto, onReceiptShowText,
 } from './receipt-view.js';
 import { renderStatsView, readStatsPeriod, onStatsPeriodChange, onMonthNav } from './stats-view.js';
+import { initTrips, refreshTrips, getTripsData, getTripExpenseCount } from './trips-app.js';
 import * as ui from './ui.js';
 
 const SECTION = 'car';
@@ -126,6 +127,7 @@ async function reload() {
   allRecords = await getAllRecords();
   allCategories = await getAllCategories();
   records = await getRecords(SECTION);
+  await refreshTrips(); // поездки лежат в своих таблицах, но обновляются вместе со всем остальным
   ui.renderStats({ lastMileage: getLastMileage(records) });
   refreshStats();
   refreshHistory();
@@ -363,7 +365,7 @@ async function handleCategoryAction() {
 async function handleBackup() {
   // Данные берём из памяти, а не из базы: окно "Поделиться" на телефоне открывается только
   // сразу по касанию, а чтение базы занимает время.
-  const backup = buildBackup(allCategories, allRecords);
+  const backup = buildBackup(allCategories, allRecords, new Date(), getTripsData());
   try {
     const saved = await ui.saveBackupFile(`finance-backup-${today()}.json`, JSON.stringify(backup, null, 2));
     if (!saved) return; // окно "Поделиться" закрыли, ничего не выбрав
@@ -412,12 +414,16 @@ async function handleRestore(file) {
     }
 
     const when = data.exportedAt ? ` от ${new Date(data.exportedAt).toLocaleDateString('ru-RU')}` : '';
-    const question = `Копия${when}: записей — ${check.summary.records}, категорий — ${check.summary.categories}.\n\n`
+    const trips = `Поездок — ${check.summary.trips}, расходов поездок — ${check.summary.tripExpenses}.`;
+    const oldFormat = data.trips === undefined ? '\nКопия сделана до появления поездок: текущие поездки будут удалены.' : '';
+    const question = `Копия${when}: записей — ${check.summary.records}, категорий — ${check.summary.categories}.\n${trips}${oldFormat}\n\n`
       + 'Все текущие данные будут заменены. Продолжить?';
     if (!ui.confirmAction(question)) return;
 
     await saveSnapshot('Перед восстановлением из файла', 'safety');
-    await replaceAllData({ categories: data.categories, records: data.records });
+    await replaceAllData({
+      categories: data.categories, records: data.records, trips: data.trips ?? [], tripExpenses: data.tripExpenses ?? [],
+    });
     resetChanges(); // данные теперь совпадают с файлом копии
     await refreshAfterReplace();
     ui.showToast('Данные восстановлены. Прежние сохранены в автокопиях.');
@@ -496,7 +502,7 @@ async function handleClearRecords() {
     ui.showToast('Записей нет');
     return;
   }
-  const question = `Удалить ВСЕ записи (${allRecords.length})? Категории останутся.\n\n`
+  const question = `Удалить ВСЕ записи автомобиля (${allRecords.length})? Категории и поездки останутся.\n\n`
     + 'Это действие нельзя отменить. Если данные нужны, сначала скачайте резервную копию.';
   if (!ui.confirmAction(question)) return;
 
@@ -518,7 +524,7 @@ async function handleClearRecords() {
 // Автокопия "начала дня": перед первым изменением данных за день запоминаем, как всё было.
 async function ensureDailySnapshot() {
   try {
-    if (allRecords.length === 0) return; // защищать пока нечего
+    if (allRecords.length === 0 && getTripExpenseCount() === 0) return; // защищать пока нечего
     if (getLastDailySnapshotDay() === today()) return;
     await saveSnapshot('Автокопия в начале дня', 'daily');
     setLastDailySnapshotDay(today());
@@ -541,7 +547,7 @@ function refreshReminder() {
     snoozed
       ? null
       : getBackupReminder({
-        recordCount: allRecords.length,
+        recordCount: allRecords.length + getTripExpenseCount(),
         changes: getChangesSinceBackup(),
         lastBackupIso: getLastBackupAt(),
       }),
@@ -584,8 +590,8 @@ function closeSnapshotsPanel() {
 
 async function handleSnapshotRestore(snapshot) {
   const question = `Вернуть данные к копии от ${ui.formatDateTime(snapshot.createdAt)}?\n\n`
-    + `Записей в копии: ${snapshot.counts.records}. Текущие данные будут заменены, но перед этим `
-    + 'приложение сохранит ещё одну автокопию.';
+    + `Записей в копии: ${snapshot.counts.records}${snapshot.counts.trips === undefined ? '. Копия сделана до появления поездок: текущие поездки будут удалены' : `, поездок: ${snapshot.counts.trips}`}.\n`
+    + 'Текущие данные будут заменены, но перед этим приложение сохранит ещё одну автокопию.';
   if (!ui.confirmAction(question)) return;
 
   try {
@@ -774,6 +780,9 @@ function registerServiceWorker() {
     onReceiptPhoto(handleReceiptPhoto);
     ui.onDiscard(handleDiscard);
     onReceiptShowText(() => toggleReceiptDebug(lastReceiptText));
+
+    // Поездки: данные для копии берутся из trips-app.js, изменения попадают в напоминание о копии
+    await initTrips({ beforeChange: ensureDailySnapshot, afterChange: noteChange });
 
     // Напоминание о копии
     ui.onReminderSave(handleBackup);
